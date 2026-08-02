@@ -60,12 +60,11 @@ export class VideoExporter {
         });
 
         videoEncoder.configure({
-          codec: 'hvc1.1.6.L93.B0', // HEVC Main Profile
+          codec: 'avc1.640028', // H.264 High Profile (broadest compatibility)
           width,
           height,
-          bitrate: 5_000_000,
-          framerate: this.fps,
-          hevc: { format: 'hevc' }
+          bitrate: 8_000_000,
+          framerate: this.fps
         });
 
         let audioEncoder = new AudioEncoder({
