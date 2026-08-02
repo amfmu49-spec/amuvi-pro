@@ -26,6 +26,7 @@ export function App() {
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [isBookmarkletOpen, setIsBookmarkletOpen] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [customConfigs, setCustomConfigs] = useState<CustomConfigMap>({});
 
   const [settings, setSettings] = useState<AppSettings>({
     motionType: 'stagger-pop',
@@ -330,9 +331,31 @@ export function App() {
     }
   };
 
-  // Handle Drag & Drop Position Update
-  const handleUpdateClipPosition = (clipId: string, x: number, y: number) => {
-    setLyrics(prev => prev.map(clip => clip.id === clipId ? { ...clip, x, y } : clip));
+  // Handle Drag & Drop Position Update (supports full line or individual character)
+  const handleUpdateClipPosition = (clipId: string, charIndex: number | null, x: number, y: number) => {
+    if (charIndex === null) {
+      setLyrics(prev => prev.map(clip => clip.id === clipId ? { ...clip, x, y } : clip));
+    } else {
+      setCustomConfigs(prev => {
+        const lineConf = prev[clipId] || {};
+        const charConfs = lineConf.chars || {};
+        const existingChar = charConfs[charIndex] || {};
+        return {
+          ...prev,
+          [clipId]: {
+            ...lineConf,
+            chars: {
+              ...charConfs,
+              [charIndex]: {
+                ...existingChar,
+                xOffset: x,
+                yOffset: y
+              }
+            }
+          }
+        };
+      });
+    }
   };
 
   // Transform LyricClip to format required by CanvasRenderer
@@ -347,13 +370,14 @@ export function App() {
   }));
 
   // Build customConfigs for character level overrides if clip is split
-  const customConfigs: CustomConfigMap = {};
+  const mergedCustomConfigs: CustomConfigMap = { ...customConfigs };
   lyrics.forEach(clip => {
     if (clip.isSplit) {
-      customConfigs[clip.id] = {
+      mergedCustomConfigs[clip.id] = {
         motionType: clip.motionType || 'stagger-pop',
         fontFamily: clip.fontFamily || settings.fontFamily,
         textColor: clip.textColor || settings.textColor,
+        ...mergedCustomConfigs[clip.id]
       };
     }
   });
@@ -424,7 +448,7 @@ export function App() {
                 lyrics={rendererLyrics}
                 currentTime={currentTime * 1000}
                 settings={settings}
-                customConfigs={customConfigs}
+                customConfigs={mergedCustomConfigs}
                 getAudioEnergy={getAudioEnergy}
                 bgMediaUrl={bgMediaUrl}
                 bgMediaType="image"

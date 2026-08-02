@@ -206,6 +206,8 @@ export interface CharacterConfig {
   textColor?: string;
   fontSize?: number;
   motionType?: string;
+  xOffset?: number;
+  yOffset?: number;
 }
 
 export interface LineConfig {

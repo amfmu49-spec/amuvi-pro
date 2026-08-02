@@ -10,7 +10,7 @@ interface Props {
   getAudioEnergy?: () => number;
   bgMediaUrl: string | null;
   bgMediaType: 'image' | 'video';
-  onUpdateClipPosition?: (clipId: string, x: number, y: number) => void;
+  onUpdateClipPosition?: (clipId: string, charIndex: number | null, x: number, y: number) => void;
 }
 
 const KANJI_REGEX = /[一-龯]/;
@@ -436,11 +436,16 @@ export const CanvasRenderer = forwardRef<CanvasRendererRef, Props>(({
             let charColor = color;
             let charMotion = motion;
             
+            let charXOffset = 0;
+            let charYOffset = 0;
+
             if (customLineConf?.chars?.[globalCharIndex]) {
                const cc = customLineConf.chars[globalCharIndex];
                if (cc.fontFamily) charFont = cc.fontFamily;
                if (cc.textColor) charColor = cc.textColor;
                if (cc.motionType) charMotion = cc.motionType as any;
+               if (cc.xOffset !== undefined) charXOffset = cc.xOffset;
+               if (cc.yOffset !== undefined) charYOffset = cc.yOffset;
             }
 
             ctx.font = `800 ${size}px ${charFont}`;
@@ -472,8 +477,8 @@ export const CanvasRenderer = forwardRef<CanvasRendererRef, Props>(({
             const exitProgress = isExiting ? Math.min(1, (charElapsed - exitTime) / 300) : 0;
 
             ctx.save();
-            let drawX = charX;
-            let drawY = charY;
+            let drawX = charX + charXOffset;
+            let drawY = charY + charYOffset;
 
             if (charMotion === 'typewriter') {
               ctx.globalAlpha = enterProgress > 0.5 ? 1 : 0;
@@ -968,6 +973,7 @@ export const CanvasRenderer = forwardRef<CanvasRendererRef, Props>(({
   }, [currentTime]);
 
   const [isDragging, setIsDragging] = useState(false);
+  const dragCharIndexRef = useRef<number | null>(null);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!canvasRef.current || !onUpdateClipPosition) return;
@@ -979,19 +985,38 @@ export const CanvasRenderer = forwardRef<CanvasRendererRef, Props>(({
     const clickX = ((e.clientX - rect.left) / rect.width) * targetW - targetW / 2;
     const clickY = ((e.clientY - rect.top) / rect.height) * targetH - targetH / 2;
 
-    let activeId: string | null = null;
+    let activeLine: LyricLine | null = null;
     for (let i = lyrics.length - 1; i >= 0; i--) {
       if (currentTime >= lyrics[i].time) {
-        activeId = lyrics[i].id;
+        activeLine = lyrics[i];
         break;
       }
     }
-    if (activeId) {
+    if (activeLine) {
       try {
         (canvas as any).setPointerCapture(e.pointerId);
       } catch (err) {}
       setIsDragging(true);
-      onUpdateClipPosition(activeId, Math.round(clickX), Math.round(clickY));
+
+      // If line is split or has character timings, calculate which character was clicked
+      if (activeLine.charTimings && activeLine.charTimings.length > 0) {
+        const numChars = activeLine.charTimings.length;
+        const lineLen = Math.max(1, numChars);
+        const charW = settings.fontSize * (targetW / 800) * 0.9;
+        const totalW = lineLen * charW;
+        const startX = (activeLine.x || 0) - totalW / 2;
+        const relX = clickX - startX;
+        let charIdx = Math.floor(relX / charW);
+        charIdx = Math.max(0, Math.min(numChars - 1, charIdx));
+        
+        dragCharIndexRef.current = charIdx;
+        const charXOffset = Math.round(clickX - (startX + charIdx * charW + charW / 2));
+        const charYOffset = Math.round(clickY - (activeLine.y || 0));
+        onUpdateClipPosition(activeLine.id, charIdx, charXOffset, charYOffset);
+      } else {
+        dragCharIndexRef.current = null;
+        onUpdateClipPosition(activeLine.id, null, Math.round(clickX), Math.round(clickY));
+      }
     }
   };
 
@@ -1005,15 +1030,25 @@ export const CanvasRenderer = forwardRef<CanvasRendererRef, Props>(({
     const moveX = ((e.clientX - rect.left) / rect.width) * targetW - targetW / 2;
     const moveY = ((e.clientY - rect.top) / rect.height) * targetH - targetH / 2;
 
-    let activeId: string | null = null;
+    let activeLine: LyricLine | null = null;
     for (let i = lyrics.length - 1; i >= 0; i--) {
       if (currentTime >= lyrics[i].time) {
-        activeId = lyrics[i].id;
+        activeLine = lyrics[i];
         break;
       }
     }
-    if (activeId) {
-      onUpdateClipPosition(activeId, Math.round(moveX), Math.round(moveY));
+    if (activeLine) {
+      if (dragCharIndexRef.current !== null && activeLine.charTimings) {
+        const numChars = activeLine.charTimings.length;
+        const charW = settings.fontSize * (targetW / 800) * 0.9;
+        const totalW = numChars * charW;
+        const startX = (activeLine.x || 0) - totalW / 2;
+        const charXOffset = Math.round(moveX - (startX + dragCharIndexRef.current * charW + charW / 2));
+        const charYOffset = Math.round(moveY - (activeLine.y || 0));
+        onUpdateClipPosition(activeLine.id, dragCharIndexRef.current, charXOffset, charYOffset);
+      } else {
+        onUpdateClipPosition(activeLine.id, null, Math.round(moveX), Math.round(moveY));
+      }
     }
   };
 
