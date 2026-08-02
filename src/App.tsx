@@ -427,10 +427,10 @@ export function App() {
           </div>
         </div>
 
-        {/* Bottom Workspace Split (Left: Inspector & Menu, Right: Vertical Timeline) */}
-        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-          {/* Bottom-Left: Inspector & Menu */}
-          <div className="w-full md:w-1/2 h-1/2 md:h-full shrink-0 overflow-y-auto border-b md:border-b-0 md:border-r border-slate-200/80">
+        {/* Bottom Workspace Split (Left 50%: Inspector & Menu, Right 50%: Vertical Timeline) */}
+        <div className="flex-1 flex flex-row overflow-hidden w-full h-full">
+          {/* Bottom-Left (50%): Inspector & Menu */}
+          <div className="w-1/2 h-full overflow-y-auto border-r border-slate-200/80 shrink-0">
             <CharInspector
               selectedClip={selectedClip}
               onUpdateClip={handleUpdateClip}
@@ -440,8 +440,8 @@ export function App() {
             />
           </div>
 
-          {/* Bottom-Right: Vertical Timeline */}
-          <div className="w-full md:w-1/2 h-1/2 md:h-full flex-1 overflow-hidden">
+          {/* Bottom-Right (50%): Vertical Timeline */}
+          <div className="w-1/2 h-full overflow-hidden shrink-0">
             <Timeline
               lyrics={lyrics}
               currentTime={currentTime}
