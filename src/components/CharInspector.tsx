@@ -89,6 +89,65 @@ export const CharInspector: React.FC<CharInspectorProps> = ({
                 ))}
               </div>
 
+              {/* Staircase Timing Toggle Controls */}
+              <div className="flex flex-col gap-2 pt-2.5 border-t border-purple-200/80">
+                <span className="text-xs font-bold text-purple-900">
+                  文字ごとの再生タイミング
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => {
+                      const chars = selectedClip.text.split('');
+                      const D = selectedClip.end_s - selectedClip.start_s;
+                      const delay = Math.min(0.2, (D * 0.5) / Math.max(1, chars.length));
+                      const newTimings = chars.map((ch, idx) => ({
+                        char: ch,
+                        start_s: selectedClip.start_s + idx * delay,
+                        end_s: selectedClip.end_s
+                      }));
+                      onUpdateClip({
+                        ...selectedClip,
+                        staircaseTiming: true,
+                        charTimings: newTimings
+                      });
+                    }}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition border ${
+                      selectedClip.staircaseTiming
+                        ? 'bg-purple-600 text-white border-purple-700 shadow-xs'
+                        : 'bg-white text-purple-800 border-purple-200 hover:bg-purple-100'
+                    }`}
+                  >
+                    <span>階段状タイミング</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      const chars = selectedClip.text.split('');
+                      const newTimings = chars.map(ch => ({
+                        char: ch,
+                        start_s: selectedClip.start_s,
+                        end_s: selectedClip.end_s
+                      }));
+                      onUpdateClip({
+                        ...selectedClip,
+                        staircaseTiming: false,
+                        charTimings: newTimings
+                      });
+                    }}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition border ${
+                      !selectedClip.staircaseTiming
+                        ? 'bg-purple-600 text-white border-purple-700 shadow-xs'
+                        : 'bg-white text-purple-800 border-purple-200 hover:bg-purple-100'
+                    }`}
+                  >
+                    <span>同時スタート</span>
+                  </button>
+                </div>
+                <p className="text-[10px] text-purple-600 leading-tight">
+                  ※「階段状」で文字が順番に登場し、最後は同時に揃って消えます。
+                </p>
+              </div>
+
               {/* Motion Presets for Characters */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs text-purple-900 font-bold">文字演出アニメーション</label>

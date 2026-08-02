@@ -182,6 +182,74 @@ export const Timeline: React.FC<TimelineProps> = ({
               const isSelected = clip.id === selectedClipId;
               const isSplit = clip.isSplit;
 
+              // If split, render thin parallel vertical bars side-by-side (細い棒の横並び)
+              if (isSplit) {
+                const chars = clip.text.split('');
+                const charTimings = clip.charTimings || chars.map((ch, idx) => ({
+                  char: ch,
+                  start_s: clip.start_s + (clip.staircaseTiming ? idx * 0.15 : 0),
+                  end_s: clip.end_s
+                }));
+
+                return (
+                  <div
+                    key={clip.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectClip(clip.id);
+                    }}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      onToggleSplit(clip.id);
+                    }}
+                    style={{
+                      top: `${top}px`,
+                      height: `${clipHeight}px`,
+                    }}
+                    className={`absolute left-0 right-0 rounded-2xl p-2 cursor-pointer transition-all border shadow-xs ${
+                      isSelected
+                        ? 'border-purple-500 bg-purple-50/70 ring-2 ring-purple-500 z-20'
+                        : 'border-purple-300 bg-purple-50/40 hover:border-purple-400 z-10'
+                    }`}
+                  >
+                    {/* Header indicator */}
+                    <div className="flex items-center justify-between text-[10px] text-purple-700 font-bold mb-1 px-1">
+                      <span className="truncate">{clip.text} （文字バラけ）</span>
+                      <span className="font-mono text-[9px] text-purple-500">
+                        {clip.staircaseTiming ? '階段状' : '同時'}
+                      </span>
+                    </div>
+
+                    {/* Thin Parallel Character Bar Columns (細い棒の横並び) */}
+                    <div className="flex-1 flex flex-row items-stretch gap-1 w-full relative">
+                      {charTimings.map((ct, i) => {
+                        const barTop = (ct.start_s - clip.start_s) * zoomY;
+                        const barHeight = Math.max(28, (ct.end_s - ct.start_s) * zoomY);
+
+                        return (
+                          <div
+                            key={`${clip.id}-bar-${i}`}
+                            style={{
+                              marginTop: `${barTop}px`,
+                              height: `${barHeight}px`,
+                            }}
+                            className="flex-1 rounded-lg bg-gradient-to-b from-purple-200 via-indigo-100 to-purple-200 border border-purple-400/80 flex flex-col items-center justify-start py-1 shadow-xs hover:border-purple-600 transition"
+                          >
+                            <span className="text-xs font-black text-purple-900 leading-none">
+                              {ct.char}
+                            </span>
+                            <span className="text-[8px] font-mono text-purple-600 mt-1 scale-90">
+                              {ct.start_s.toFixed(1)}s
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              }
+
+              // Standard full line clip block
               return (
                 <div
                   key={clip.id}
@@ -200,8 +268,6 @@ export const Timeline: React.FC<TimelineProps> = ({
                   className={`absolute left-0 right-0 rounded-xl p-3 flex flex-col justify-between cursor-pointer transition-all border shadow-xs ${
                     isSelected
                       ? 'border-blue-500 bg-blue-50 text-blue-900 shadow-md ring-2 ring-blue-500 z-20 font-bold'
-                      : isSplit
-                      ? 'border-purple-300 bg-purple-50/90 text-purple-900 z-10'
                       : 'border-slate-200 bg-white text-slate-800 hover:border-blue-300 hover:bg-slate-50/50 z-0'
                   }`}
                 >
@@ -209,11 +275,6 @@ export const Timeline: React.FC<TimelineProps> = ({
                     <span className="text-sm font-bold truncate tracking-wide">
                       {clip.text}
                     </span>
-                    {isSplit && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-md bg-purple-600 text-white font-black shadow-xs shrink-0">
-                        一文字バラけ
-                      </span>
-                    )}
                   </div>
                   <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-1">
                     <span>{clip.start_s.toFixed(2)}s ~ {clip.end_s.toFixed(2)}s</span>
@@ -224,7 +285,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                       }}
                       className="text-[10px] text-purple-600 font-bold hover:underline"
                     >
-                      {isSplit ? '分解中' : '分解'}
+                      一文字分解
                     </button>
                   </div>
                 </div>

@@ -335,7 +335,8 @@ export function App() {
     id: c.id,
     time: c.start_s * 1000,
     endTime: c.end_s * 1000,
-    text: c.text
+    text: c.text,
+    charTimings: c.charTimings
   }));
 
   // Build customConfigs for character level overrides if clip is split

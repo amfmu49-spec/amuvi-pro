@@ -1,8 +1,11 @@
+import type { CharTiming } from '../types';
+
 export interface LyricLine {
   id: string;
   time: number; // in milliseconds
   endTime?: number; // in milliseconds
   text: string;
+  charTimings?: CharTiming[];
 }
 
 export function parseLrc(content: string): LyricLine[] {

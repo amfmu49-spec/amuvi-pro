@@ -30,13 +30,21 @@ export interface CharLayer {
   motionType?: MotionType;
 }
 
+export interface CharTiming {
+  char: string;
+  start_s: number;
+  end_s: number;
+}
+
 export interface LyricClip {
   id: string;
   text: string;
   start_s: number;
   end_s: number;
-  isSplit?: boolean; // 文字バラけ有効か
-  staggerDelay?: number; // 秒数（例: 0.08sごとに一文字出現）
+  isSplit?: boolean; // 一文字バラけ有効か
+  staggerDelay?: number; // 秒数（例: 0.1s）
+  staircaseTiming?: boolean; // 階段状タイミング有効か
+  charTimings?: CharTiming[]; // 一文字ごとの個別タイミング（階段状表示等）
   chars?: CharLayer[];
   fontFamily?: string;
   textColor?: string;

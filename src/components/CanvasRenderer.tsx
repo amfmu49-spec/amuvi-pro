@@ -445,14 +445,30 @@ export const CanvasRenderer = forwardRef<CanvasRendererRef, Props>(({
             ctx.font = `800 ${size}px ${charFont}`;
             ctx.fillStyle = charColor;
 
-            const totalEntranceTime = Math.min(1000, durationMs * 0.6);
-            const stagger = totalEntranceTime / Math.max(1, chars.length);
-            const charElapsed = Math.max(0, elapsedMs - (cIdx * stagger));
-            const enterProgress = Math.min(1, charElapsed / 400);
+            let charElapsed = elapsedMs;
+            let charDurationMs = durationMs;
 
-            const exitTime = durationMs - 300;
-            const isExiting = elapsedMs > exitTime;
-            const exitProgress = isExiting ? Math.min(1, (elapsedMs - exitTime) / 300) : 0;
+            if (activeLine.charTimings && activeLine.charTimings[cIdx]) {
+              const ct = activeLine.charTimings[cIdx];
+              const charStartMs = ct.start_s * 1000;
+              const charEndMs = ct.end_s * 1000;
+              
+              if (renderTime < charStartMs || renderTime > charEndMs) {
+                globalCharIndex++;
+                return;
+              }
+              charElapsed = renderTime - charStartMs;
+              charDurationMs = charEndMs - charStartMs;
+            } else {
+              const totalEntranceTime = Math.min(1000, durationMs * 0.6);
+              const stagger = totalEntranceTime / Math.max(1, chars.length);
+              charElapsed = Math.max(0, elapsedMs - (cIdx * stagger));
+            }
+
+            const enterProgress = Math.min(1, charElapsed / 350);
+            const exitTime = charDurationMs - 300;
+            const isExiting = charElapsed > exitTime;
+            const exitProgress = isExiting ? Math.min(1, (charElapsed - exitTime) / 300) : 0;
 
             ctx.save();
             let drawX = charX;
