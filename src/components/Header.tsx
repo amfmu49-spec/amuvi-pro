@@ -30,6 +30,9 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-blue-600 text-white tracking-widest uppercase shadow-xs">
               PRO
             </span>
+            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-slate-100/90 text-slate-700 border border-slate-200 shadow-2xs">
+              ver 2.0.0
+            </span>
           </div>
         </div>
 

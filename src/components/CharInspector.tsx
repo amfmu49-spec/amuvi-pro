@@ -176,6 +176,12 @@ export const CharInspector: React.FC<CharInspectorProps> = ({
           </div>
         </div>
       </div>
+
+      {/* App Version Info Footer */}
+      <div className="flex items-center justify-between pt-3 border-t border-slate-200/80 text-[10px] text-slate-400 font-mono">
+        <span className="font-bold text-slate-600">AMUVI PRO ver 2.0.0</span>
+        <span className="text-slate-400">Build 2026.08</span>
+      </div>
     </div>
   );
 };
