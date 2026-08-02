@@ -123,27 +123,25 @@ export function App() {
     }
   }, []);
 
-  // Web Audio Analyser and Audio Context setup
+  // Web Audio Analyser setup (Safely skips CORS-restricted external Suno CDN audio)
   const setupAudioContext = () => {
-    if (!audioRef.current) return;
+    if (!audioRef.current || audioContextRef.current) return;
+    // Skip createMediaElementSource for external URLs (like Suno CDN) to prevent CORS audio muting
+    if (audioUrl && audioUrl.startsWith('http') && !audioUrl.includes(window.location.hostname)) {
+      return;
+    }
     try {
-      if (!audioContextRef.current) {
-        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-        const ctx = new AudioCtx();
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 128;
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioCtx();
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 128;
 
-        try {
-          const source = ctx.createMediaElementSource(audioRef.current);
-          source.connect(analyser);
-          analyser.connect(ctx.destination);
-        } catch (mediaErr) {
-          console.warn('Media element source setup fallback:', mediaErr);
-        }
+      const source = ctx.createMediaElementSource(audioRef.current);
+      source.connect(analyser);
+      analyser.connect(ctx.destination);
 
-        audioContextRef.current = ctx;
-        analyserRef.current = analyser;
-      }
+      audioContextRef.current = ctx;
+      analyserRef.current = analyser;
 
       if (audioContextRef.current.state === 'suspended') {
         audioContextRef.current.resume();
@@ -161,66 +159,7 @@ export function App() {
     return avg / 255;
   }, []);
 
-  // Generate 30s Piano & Melody Demo Audio Track
-  const generateDemoSongAudio = async () => {
-    try {
-      const sampleRate = 44100;
-      const duration = 30;
-      const numSamples = sampleRate * duration;
-      const offlineCtx = new OfflineAudioContext(2, numSamples, sampleRate);
-
-      // Pop melody notes (C4, E4, G4, A4, C5)
-      const melodyNotes = [261.63, 329.63, 392.00, 440.00, 523.25, 392.00, 329.63, 261.63];
-      for (let i = 0; i < 60; i++) {
-        const noteTime = i * 0.5;
-        const freq = melodyNotes[i % melodyNotes.length];
-        const osc = offlineCtx.createOscillator();
-        const gain = offlineCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, noteTime);
-        gain.gain.setValueAtTime(0.01, noteTime);
-        gain.gain.exponentialRampToValueAtTime(0.18, noteTime + 0.05);
-        gain.gain.exponentialRampToValueAtTime(0.001, noteTime + 0.45);
-        osc.connect(gain);
-        gain.connect(offlineCtx.destination);
-        osc.start(noteTime);
-        osc.stop(noteTime + 0.5);
-      }
-
-      // Bass Chords (C - G - Am - F)
-      const chords = [
-        [130.81, 164.81, 196.00], // C3
-        [98.00, 123.47, 146.83],  // G2
-        [110.00, 130.81, 164.81], // A2m
-        [87.31, 110.00, 130.81]   // F2
-      ];
-      chords.forEach((chord, idx) => {
-        const chordTime = idx * 7.5;
-        chord.forEach(freq => {
-          const osc = offlineCtx.createOscillator();
-          const gain = offlineCtx.createGain();
-          osc.type = 'triangle';
-          osc.frequency.setValueAtTime(freq, chordTime);
-          gain.gain.setValueAtTime(0.01, chordTime);
-          gain.gain.exponentialRampToValueAtTime(0.12, chordTime + 0.1);
-          gain.gain.exponentialRampToValueAtTime(0.01, chordTime + 7.4);
-          osc.connect(gain);
-          gain.connect(offlineCtx.destination);
-          osc.start(chordTime);
-          osc.stop(chordTime + 7.5);
-        });
-      });
-
-      const renderedBuffer = await offlineCtx.startRendering();
-      const wavBlob = audioBufferToWavBlob(renderedBuffer);
-      const blobUrl = URL.createObjectURL(wavBlob);
-      setAudioUrl(blobUrl);
-    } catch (err) {
-      console.warn('Failed to generate demo song audio:', err);
-    }
-  };
-
-  // Load Initial Demo Lyrics & Audio
+  // Load Initial Demo Lyrics
   useEffect(() => {
     const initialClips = convertToLyricClips(SAMPLE_LRC);
     setLyrics(initialClips);
@@ -228,7 +167,6 @@ export function App() {
       setSelectedClipId(initialClips[0].id);
       setDuration(Math.max(30, initialClips[initialClips.length - 1].end_s + 5));
     }
-    generateDemoSongAudio();
   }, []);
 
   // Parse URL hash/search for Suno bookmarklet import data
@@ -415,19 +353,12 @@ export function App() {
   const selectedClip = lyrics.find(c => c.id === selectedClipId) || null;
 
   // Handle Audio File Upload
-  const handleAudioUpload = (file: File) => {
-    const url = URL.createObjectURL(file);
-    setAudioUrl(url);
-    setSongTitle(file.name.replace(/\.[^/.]+$/, ''));
-  };
-
   return (
     <div className="flex flex-col h-[100dvh] w-screen bg-[#f2f4f8] text-slate-900 overflow-hidden font-sans">
-      {/* Audio Element (Always active in DOM for sound playback) */}
+      {/* Native Audio Element for Suno MP3 Playback */}
       <audio
         ref={audioRef}
         src={audioUrl || undefined}
-        crossOrigin="anonymous"
         onLoadedMetadata={() => {
           if (audioRef.current) setDuration(audioRef.current.duration);
         }}
@@ -458,7 +389,7 @@ export function App() {
                   : 'text-slate-500 hover:text-slate-800'
               }`}
             >
-              💻 16:9 標準
+              16:9 標準
             </button>
             <button
               onClick={() => setSettings(s => ({ ...s, aspectRatio: '9:16' }))}
@@ -468,7 +399,7 @@ export function App() {
                   : 'text-slate-500 hover:text-slate-800'
               }`}
             >
-              📱 9:16 縦動画
+              9:16 縦動画
             </button>
           </div>
 
@@ -504,7 +435,6 @@ export function App() {
               onToggleSplit={handleToggleSplit}
               settings={settings}
               onUpdateSettings={(newS) => setSettings(s => ({ ...s, ...newS }))}
-              onAudioUpload={handleAudioUpload}
             />
           </div>
 
@@ -532,51 +462,6 @@ export function App() {
       />
     </div>
   );
-}
-
-// Helper to convert AudioBuffer to WAV Blob for demo melody audio playback
-function audioBufferToWavBlob(buffer: AudioBuffer): Blob {
-  const numOfChan = buffer.numberOfChannels;
-  const length = buffer.length * numOfChan * 2 + 44;
-  const out = new DataView(new ArrayBuffer(length));
-  let channels: Float32Array[] = [];
-  let sampleRate = buffer.sampleRate;
-  let offset = 0;
-
-  function writeString(str: string) {
-    for (let i = 0; i < str.length; i++) {
-      out.setUint8(offset++, str.charCodeAt(i));
-    }
-  }
-
-  writeString('RIFF');
-  out.setUint32(offset, length - 8, true); offset += 4;
-  writeString('WAVE');
-  writeString('fmt ');
-  out.setUint32(offset, 16, true); offset += 4;
-  out.setUint16(offset, 1, true); offset += 2;
-  out.setUint16(offset, numOfChan, true); offset += 2;
-  out.setUint32(offset, sampleRate, true); offset += 4;
-  out.setUint32(offset, sampleRate * 2 * numOfChan, true); offset += 4;
-  out.setUint16(offset, numOfChan * 2, true); offset += 2;
-  out.setUint16(offset, 16, true); offset += 2;
-  writeString('data');
-  out.setUint32(offset, length - offset - 4, true); offset += 4;
-
-  for (let i = 0; i < buffer.numberOfChannels; i++) {
-    channels.push(buffer.getChannelData(i));
-  }
-
-  for (let i = 0; i < buffer.length; i++) {
-    for (let ch = 0; ch < numOfChan; ch++) {
-      let sample = Math.max(-1, Math.min(1, channels[ch][i]));
-      sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
-      out.setInt16(offset, sample, true);
-      offset += 2;
-    }
-  }
-
-  return new Blob([out], { type: 'audio/wav' });
 }
 
 export default App;
