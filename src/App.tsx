@@ -18,6 +18,7 @@ const SAMPLE_LRC = `[00:01.00]愛してる
 export function App() {
   const [lyrics, setLyrics] = useState<LyricClip[]>([]);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [bgMediaUrl] = useState<string>(`${import.meta.env.BASE_URL}logo.png`);
   const [songTitle, setSongTitle] = useState<string>('サンプル楽曲');
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0); // seconds
@@ -486,7 +487,7 @@ export function App() {
                 settings={settings}
                 customConfigs={customConfigs}
                 getAudioEnergy={getAudioEnergy}
-                bgMediaUrl={null}
+                bgMediaUrl={bgMediaUrl}
                 bgMediaType="image"
               />
             </div>

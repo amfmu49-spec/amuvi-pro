@@ -134,22 +134,18 @@ export const CanvasRenderer = forwardRef<CanvasRendererRef, Props>(({
           const iRatio = nw / nh;
           const cRatio = width / height;
           
-          // 1. Performance-friendly Zoomed Background
-          let coverW = width * 1.2, coverH = height * 1.2;
-          if (iRatio > cRatio) coverW = (height * 1.2) * iRatio;
-          else coverH = (width * 1.2) / iRatio;
+          // Fit image neatly inside preview canvas with 85% scale
+          let containW = width * 0.85, containH = height * 0.85;
+          if (iRatio > cRatio) {
+            containH = containW / iRatio;
+          } else {
+            containW = containH * iRatio;
+          }
           
           ctx.save();
-          ctx.globalAlpha = 0.3;
-          ctx.drawImage(img, -coverW/2, -coverH/2, coverW, coverH);
-          ctx.restore();
-
-          // 2. Contain Foreground
-          let containW = width, containH = height;
-          if (iRatio > cRatio) containH = width / iRatio;
-          else containW = height * iRatio;
-          
+          ctx.globalAlpha = 0.9;
           ctx.drawImage(img, -containW/2, -containH/2, containW, containH);
+          ctx.restore();
         }
       }
       ctx.restore();
