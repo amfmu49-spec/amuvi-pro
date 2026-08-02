@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { CanvasRenderer } from './components/CanvasRenderer';
 import type { CanvasRendererRef } from './components/CanvasRenderer';
 import { Header } from './components/Header';
@@ -160,62 +160,7 @@ export function App() {
     return avg / 255;
   }, []);
 
-  // Generate synthetic sample audio track (30s pop chords)
-  const generateSampleAudio = async () => {
-    try {
-      const sampleRate = 44100;
-      const duration = 30;
-      const numSamples = sampleRate * duration;
-      const offlineCtx = new OfflineAudioContext(2, numSamples, sampleRate);
-
-      const chords = [
-        [261.63, 329.63, 392.00], // C major
-        [196.00, 246.94, 293.66], // G major
-        [220.00, 261.63, 329.63], // A minor
-        [174.61, 220.00, 261.63]  // F major
-      ];
-
-      chords.forEach((chord, chordIdx) => {
-        const startTime = chordIdx * 7.5;
-        chord.forEach(freq => {
-          const osc = offlineCtx.createOscillator();
-          const gain = offlineCtx.createGain();
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(freq, startTime);
-          gain.gain.setValueAtTime(0.01, startTime);
-          gain.gain.exponentialRampToValueAtTime(0.12, startTime + 0.1);
-          gain.gain.exponentialRampToValueAtTime(0.01, startTime + 7.4);
-          osc.connect(gain);
-          gain.connect(offlineCtx.destination);
-          osc.start(startTime);
-          osc.stop(startTime + 7.5);
-        });
-      });
-
-      // Soft beat ticks
-      for (let t = 0; t < duration; t += 0.5) {
-        const osc = offlineCtx.createOscillator();
-        const gain = offlineCtx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(t % 1 === 0 ? 160 : 320, t);
-        gain.gain.setValueAtTime(0.08, t);
-        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
-        osc.connect(gain);
-        gain.connect(offlineCtx.destination);
-        osc.start(t);
-        osc.stop(t + 0.08);
-      }
-
-      const renderedBuffer = await offlineCtx.startRendering();
-      const wavBlob = audioBufferToWavBlob(renderedBuffer);
-      const blobUrl = URL.createObjectURL(wavBlob);
-      setAudioUrl(blobUrl);
-    } catch (err) {
-      console.warn('Failed to generate sample audio:', err);
-    }
-  };
-
-  // Load Initial Demo Lyrics & Audio
+  // Load Initial Demo Lyrics
   useEffect(() => {
     const initialClips = convertToLyricClips(SAMPLE_LRC);
     setLyrics(initialClips);
@@ -223,7 +168,6 @@ export function App() {
       setSelectedClipId(initialClips[0].id);
       setDuration(Math.max(30, initialClips[initialClips.length - 1].end_s + 5));
     }
-    generateSampleAudio();
   }, []);
 
   // Parse URL hash/search for Suno bookmarklet import data
@@ -333,15 +277,7 @@ export function App() {
     setLyrics(prev => prev.map(c => c.id === updatedClip.id ? updatedClip : c));
   };
 
-  // Handle Audio File Upload
-  const handleAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const url = URL.createObjectURL(file);
-      setAudioUrl(url);
-      setSongTitle(file.name.replace(/\.[^/.]+$/, ''));
-    }
-  };
+
 
   // Load Sample Data
   const handleLoadSample = () => {
@@ -349,7 +285,6 @@ export function App() {
     setLyrics(clips);
     setSongTitle('AMUVI PRO Demo');
     if (clips.length > 0) setSelectedClipId(clips[0].id);
-    generateSampleAudio();
   };
 
   // Start Video Export
@@ -435,7 +370,6 @@ export function App() {
       {/* Header Bar */}
       <Header
         onOpenBookmarkletModal={() => setIsBookmarkletOpen(true)}
-        onAudioUpload={handleAudioUpload}
         onLoadSample={handleLoadSample}
         onStartExport={handleStartExport}
         isExporting={isExporting}
@@ -528,51 +462,6 @@ export function App() {
       />
     </div>
   );
-}
-
-// Helper to convert AudioBuffer to WAV Blob for synthesized sample audio playback
-function audioBufferToWavBlob(buffer: AudioBuffer): Blob {
-  const numOfChan = buffer.numberOfChannels;
-  const length = buffer.length * numOfChan * 2 + 44;
-  const out = new DataView(new ArrayBuffer(length));
-  let channels: Float32Array[] = [];
-  let sampleRate = buffer.sampleRate;
-  let offset = 0;
-
-  function writeString(str: string) {
-    for (let i = 0; i < str.length; i++) {
-      out.setUint8(offset++, str.charCodeAt(i));
-    }
-  }
-
-  writeString('RIFF');
-  out.setUint32(offset, length - 8, true); offset += 4;
-  writeString('WAVE');
-  writeString('fmt ');
-  out.setUint32(offset, 16, true); offset += 4;
-  out.setUint16(offset, 1, true); offset += 2;
-  out.setUint16(offset, numOfChan, true); offset += 2;
-  out.setUint32(offset, sampleRate, true); offset += 4;
-  out.setUint32(offset, sampleRate * 2 * numOfChan, true); offset += 4;
-  out.setUint16(offset, numOfChan * 2, true); offset += 2;
-  out.setUint16(offset, 16, true); offset += 2;
-  writeString('data');
-  out.setUint32(offset, length - offset - 4, true); offset += 4;
-
-  for (let i = 0; i < buffer.numberOfChannels; i++) {
-    channels.push(buffer.getChannelData(i));
-  }
-
-  for (let i = 0; i < buffer.length; i++) {
-    for (let ch = 0; ch < numOfChan; ch++) {
-      let sample = Math.max(-1, Math.min(1, channels[ch][i]));
-      sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
-      out.setInt16(offset, sample, true);
-      offset += 2;
-    }
-  }
-
-  return new Blob([out], { type: 'audio/wav' });
 }
 
 export default App;

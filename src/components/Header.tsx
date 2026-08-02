@@ -2,7 +2,6 @@ import React from 'react';
 
 interface HeaderProps {
   onOpenBookmarkletModal: () => void;
-  onAudioUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onLoadSample: () => void;
   onStartExport: () => void;
   isExporting: boolean;
@@ -11,7 +10,6 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   onOpenBookmarkletModal,
-  onAudioUpload,
   onLoadSample,
   onStartExport,
   isExporting,
@@ -52,13 +50,6 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="text-base">✨</span>
           <span>Suno連携</span>
         </button>
-
-        {/* Audio Upload */}
-        <label className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100/90 border border-slate-200 text-slate-700 text-xs sm:text-sm font-bold cursor-pointer hover:bg-slate-200/90 transition shadow-xs">
-          <span className="text-base">🎵</span>
-          <span>音楽選択</span>
-          <input type="file" accept="audio/*" onChange={onAudioUpload} className="hidden" />
-        </label>
 
         {/* Load Sample Data */}
         <button
