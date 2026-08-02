@@ -135,20 +135,20 @@ export const Timeline: React.FC<TimelineProps> = ({
         </div>
       </div>
 
-      {/* Main Vertical Track Area */}
+      {/* Main Vertical Track Area (White background with Red seekbar) */}
       <div 
         ref={containerRef}
         onMouseDown={handleTimelineMouseDown}
-        className="flex-1 overflow-y-auto overflow-x-hidden relative custom-scrollbar bg-slate-900 cursor-pointer"
+        className="flex-1 overflow-y-auto overflow-x-hidden relative custom-scrollbar bg-slate-50 cursor-pointer"
       >
         <div style={{ height: `${timelineHeight + 100}px` }} className="w-full relative min-w-[280px]">
           {/* Vertical Time Ruler (Left Axis) */}
-          <div className="absolute top-0 bottom-0 left-0 w-16 bg-slate-950 border-r border-slate-800 text-[10px] font-mono text-slate-400 z-10">
+          <div className="absolute top-0 bottom-0 left-0 w-16 bg-slate-100/90 border-r border-slate-200 text-[10px] font-mono text-slate-500 z-10">
             {timeMarkers.map(t => (
               <div 
                 key={t}
                 style={{ top: `${t * zoomY + 24}px` }}
-                className="absolute left-0 right-0 border-t border-slate-800/80 px-2 pt-0.5"
+                className="absolute left-0 right-0 border-t border-slate-200/90 px-2 pt-0.5"
               >
                 {formatTime(t)}
               </div>
@@ -161,17 +161,17 @@ export const Timeline: React.FC<TimelineProps> = ({
               <div 
                 key={`vgrid-${t}`}
                 style={{ top: `${t * zoomY + 24}px` }}
-                className="absolute left-0 right-0 border-t border-slate-800/40"
+                className="absolute left-0 right-0 border-t border-slate-200/60"
               />
             ))}
           </div>
 
-          {/* Horizontal Playhead Line (Moving down vertically) */}
+          {/* Horizontal Playhead Line (Vivid RED Seekbar Line) */}
           <div 
             style={{ top: `${playheadPositionY + 24}px` }}
-            className="absolute left-0 right-0 h-0.5 bg-amber-400 z-30 pointer-events-none shadow-[0_0_10px_#f59e0b]"
+            className="absolute left-0 right-0 h-0.5 bg-red-600 z-30 pointer-events-none shadow-[0_0_8px_rgba(239,68,68,0.5)]"
           >
-            <div className="w-3 h-3 bg-amber-400 rotate-45 -mt-1.2 ml-14 shadow-md shadow-amber-500/50" />
+            <div className="w-3.5 h-3.5 bg-red-600 rotate-45 -mt-1.5 ml-[52px] shadow-md shadow-red-500/50 border border-red-700" />
           </div>
 
           {/* Lyric Clips (Arranged Vertically on the Track) */}
@@ -197,12 +197,12 @@ export const Timeline: React.FC<TimelineProps> = ({
                     top: `${top}px`,
                     height: `${clipHeight}px`,
                   }}
-                  className={`absolute left-0 right-0 rounded-xl p-3 flex flex-col justify-between cursor-pointer transition-all border shadow-sm ${
+                  className={`absolute left-0 right-0 rounded-xl p-3 flex flex-col justify-between cursor-pointer transition-all border shadow-xs ${
                     isSelected
-                      ? 'border-blue-400 bg-blue-900/90 text-white shadow-[0_0_15px_rgba(59,130,246,0.5)] ring-2 ring-blue-400 z-20'
+                      ? 'border-blue-500 bg-blue-50 text-blue-900 shadow-md ring-2 ring-blue-500 z-20 font-bold'
                       : isSplit
-                      ? 'border-purple-500/80 bg-purple-950/80 text-purple-100 z-10'
-                      : 'border-slate-700 bg-slate-900/90 text-slate-200 hover:border-slate-500 z-0'
+                      ? 'border-purple-300 bg-purple-50/90 text-purple-900 z-10'
+                      : 'border-slate-200 bg-white text-slate-800 hover:border-blue-300 hover:bg-slate-50/50 z-0'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2 overflow-hidden">
@@ -222,7 +222,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                         e.stopPropagation();
                         onToggleSplit(clip.id);
                       }}
-                      className="text-[10px] text-purple-400 font-bold hover:underline"
+                      className="text-[10px] text-purple-600 font-bold hover:underline"
                     >
                       {isSplit ? '分解中' : '分解'}
                     </button>
