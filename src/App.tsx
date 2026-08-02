@@ -25,7 +25,6 @@ export function App() {
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [isBookmarkletOpen, setIsBookmarkletOpen] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
-  const [mobileTab, setMobileTab] = useState<'timeline' | 'inspector' | 'preview'>('timeline');
 
   const [settings, setSettings] = useState<AppSettings>({
     motionType: 'stagger-pop',
@@ -37,7 +36,7 @@ export function App() {
     glowIntensity: 1.5,
     autoColor: false,
     beatSyncIntensity: 1.2,
-    aspectRatio: '9:16', // Default to 9:16 Vertical for mobile-first experience!
+    aspectRatio: '16:9', // Default to 16:9 as requested!
     resolution: '1080p',
     fps: 60,
     songTitle: 'AMUVI PRO Demo',
@@ -328,86 +327,60 @@ export function App() {
         songTitle={songTitle}
       />
 
-      {/* Main Workspace Area (Responsive for Desktop & Mobile Vertical Viewport) */}
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
-        {/* Canvas Preview Area */}
-        <div className={`flex-1 flex flex-col items-center justify-center p-2 sm:p-4 bg-[#050711] relative transition-all ${
-          mobileTab === 'preview' ? 'flex' : 'h-[45vh] lg:h-full'
-        }`}>
-          {/* Canvas Frame Container */}
-          <div 
-            className={`relative rounded-2xl overflow-hidden shadow-2xl border border-slate-800/80 bg-black flex items-center justify-center transition-all ${
-              settings.aspectRatio === '9:16' 
-                ? 'h-[92%] max-h-[480px] lg:max-h-[85vh] aspect-[9/16]' 
-                : 'w-[95%] lg:w-[85%] aspect-[16/9] max-h-[70vh]'
-            }`}
-          >
-            <CanvasRenderer
-              ref={canvasRef}
-              lyrics={rendererLyrics}
-              currentTime={currentTime * 1000}
-              settings={settings}
-              customConfigs={customConfigs}
-              getAudioEnergy={getAudioEnergy}
-              bgMediaUrl={null}
-              bgMediaType="image"
-            />
-          </div>
-
-          {/* Aspect Ratio & Quick Settings Pill */}
-          <div className="absolute top-3 left-3 sm:top-5 sm:left-5 flex items-center gap-1.5 bg-slate-950/80 backdrop-blur-md px-2.5 py-1 rounded-xl border border-slate-800 text-[11px]">
-            <span className="text-slate-400 hidden sm:inline">画角:</span>
-            <button
-              onClick={() => setSettings(s => ({ ...s, aspectRatio: '9:16' }))}
-              className={`px-2 py-0.5 rounded font-bold transition ${
-                settings.aspectRatio === '9:16' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              📱 9:16 縦画面
-            </button>
+      {/* Clean Workspace Layout */}
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+        {/* Stage / Preview Section */}
+        <div className="flex-1 flex flex-col items-center justify-center p-3 sm:p-5 bg-[#050711] relative">
+          
+          {/* Aspect Ratio Toggle Bar */}
+          <div className="flex items-center gap-2 mb-3 bg-slate-900/90 border border-slate-800 px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm">
+            <span className="text-slate-400">表示モード:</span>
             <button
               onClick={() => setSettings(s => ({ ...s, aspectRatio: '16:9' }))}
-              className={`px-2 py-0.5 rounded font-bold transition ${
-                settings.aspectRatio === '16:9' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'
+              className={`px-3 py-1 rounded-lg transition ${
+                settings.aspectRatio === '16:9' 
+                  ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-extrabold' 
+                  : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              💻 16:9 横
+              💻 16:9 標準
             </button>
+            <button
+              onClick={() => setSettings(s => ({ ...s, aspectRatio: '9:16' }))}
+              className={`px-3 py-1 rounded-lg transition ${
+                settings.aspectRatio === '9:16' 
+                  ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-extrabold' 
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              📱 9:16 縦動画
+            </button>
+          </div>
+
+          {/* Fixed 16:9 Monitor Stage Frame */}
+          <div className="w-full max-w-[680px] aspect-[16/9] max-h-[360px] sm:max-h-[400px] rounded-2xl border border-slate-800 bg-[#03050a] shadow-2xl relative flex items-center justify-center p-2 overflow-hidden">
+            {/* Canvas Rendering Box (Fits 16:9 or 9:16 inside container) */}
+            <div className={`relative transition-all h-full ${
+              settings.aspectRatio === '9:16'
+                ? 'aspect-[9/16] mx-auto rounded-xl overflow-hidden border border-slate-700/60 shadow-2xl'
+                : 'w-full rounded-xl overflow-hidden'
+            }`}>
+              <CanvasRenderer
+                ref={canvasRef}
+                lyrics={rendererLyrics}
+                currentTime={currentTime * 1000}
+                settings={settings}
+                customConfigs={customConfigs}
+                getAudioEnergy={getAudioEnergy}
+                bgMediaUrl={null}
+                bgMediaType="image"
+              />
+            </div>
           </div>
         </div>
 
-        {/* Mobile View Switching Tabs (Shown on small screens) */}
-        <div className="lg:hidden flex items-center justify-around bg-slate-950 border-t border-b border-slate-800/80 py-1.5 px-2 text-xs z-20 shrink-0">
-          <button
-            onClick={() => setMobileTab('timeline')}
-            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg font-bold transition ${
-              mobileTab === 'timeline' ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            ⏱️ タイムライン
-          </button>
-          <button
-            onClick={() => setMobileTab('inspector')}
-            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg font-bold transition ${
-              mobileTab === 'inspector' ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            ✨ 文字・エフェクト
-          </button>
-          <button
-            onClick={() => setMobileTab('preview')}
-            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg font-bold transition ${
-              mobileTab === 'preview' ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            🔍 全体プレビュー
-          </button>
-        </div>
-
-        {/* Right Inspector Panel (Responsive: drawer/tab on mobile, side panel on desktop) */}
-        <div className={`w-full lg:w-80 shrink-0 ${
-          mobileTab === 'inspector' ? 'flex-1 overflow-y-auto' : 'hidden lg:block'
-        }`}>
+        {/* Right Inspector Panel */}
+        <div className="w-full md:w-88 shrink-0 border-t md:border-t-0 md:border-l border-slate-800/80">
           <CharInspector
             selectedClip={selectedClip}
             onUpdateClip={handleUpdateClip}
@@ -418,10 +391,8 @@ export function App() {
         </div>
       </div>
 
-      {/* Bottom Visual Timeline (Shown on Desktop always, or on Mobile Timeline Tab) */}
-      <div className={`h-40 sm:h-44 shrink-0 ${
-        mobileTab === 'inspector' ? 'hidden lg:block' : 'block'
-      }`}>
+      {/* Bottom Visual Timeline */}
+      <div className="h-44 shrink-0 border-t border-slate-800/80">
         <Timeline
           lyrics={lyrics}
           currentTime={currentTime}
