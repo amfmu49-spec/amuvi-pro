@@ -64,6 +64,19 @@ export const Timeline: React.FC<TimelineProps> = ({
     }
   }, [isScrubbing, zoom, effectiveDuration]);
 
+  // Auto-scroll timeline to keep playhead centered once past half viewport width
+  useEffect(() => {
+    if (containerRef.current && !isScrubbing) {
+      const viewportWidth = containerRef.current.clientWidth;
+      const targetScrollLeft = (currentTime * zoom) - (viewportWidth / 2);
+      if (targetScrollLeft > 0) {
+        containerRef.current.scrollLeft = targetScrollLeft;
+      } else {
+        containerRef.current.scrollLeft = 0;
+      }
+    }
+  }, [currentTime, zoom, isScrubbing]);
+
   // Format time display MM:SS.ms
   const formatTime = (sec: number) => {
     const m = Math.floor(sec / 60);
@@ -82,22 +95,22 @@ export const Timeline: React.FC<TimelineProps> = ({
   const playheadPosition = currentTime * zoom;
 
   return (
-    <div className="flex flex-col h-full bg-[#0b0f19]/90 backdrop-blur-xl border-t border-slate-800 text-slate-200 select-none">
+    <div className="flex flex-col h-full bg-slate-900 text-slate-100 select-none border-t border-slate-800">
       {/* Controls Bar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-slate-900/80 border-b border-slate-800/80 text-xs">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-slate-950 border-b border-slate-800 text-xs">
         <div className="flex items-center gap-3">
           <button
             onClick={onTogglePlay}
-            className="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold shadow-lg shadow-amber-500/20 transition"
+            className="flex items-center justify-center w-10 h-10 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-md shadow-blue-500/25 transition transform active:scale-95"
           >
             {isPlaying ? (
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
             ) : (
-              <svg className="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
+              <svg className="w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
             )}
           </button>
-          <div className="font-mono text-amber-400 font-semibold tracking-wider">
-            {formatTime(currentTime)} <span className="text-slate-500">/ {formatTime(effectiveDuration)}</span>
+          <div className="font-mono text-slate-200 font-bold text-sm tracking-wider">
+            {formatTime(currentTime)} <span className="text-slate-500 font-normal">/ {formatTime(effectiveDuration)}</span>
           </div>
         </div>
 

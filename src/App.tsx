@@ -122,23 +122,33 @@ export function App() {
     }
   }, []);
 
-  // Setup Web Audio Analyser for audio reactive visualizer
+  // Web Audio Analyser and Audio Context setup
   const setupAudioContext = () => {
-    if (!audioRef.current || audioContextRef.current) return;
+    if (!audioRef.current) return;
     try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      const ctx = new AudioCtx();
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 128;
+      if (!audioContextRef.current) {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        const ctx = new AudioCtx();
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 128;
 
-      const source = ctx.createMediaElementSource(audioRef.current);
-      source.connect(analyser);
-      analyser.connect(ctx.destination);
+        try {
+          const source = ctx.createMediaElementSource(audioRef.current);
+          source.connect(analyser);
+          analyser.connect(ctx.destination);
+        } catch (mediaErr) {
+          console.warn('Media element source setup fallback:', mediaErr);
+        }
 
-      audioContextRef.current = ctx;
-      analyserRef.current = analyser;
+        audioContextRef.current = ctx;
+        analyserRef.current = analyser;
+      }
+
+      if (audioContextRef.current.state === 'suspended') {
+        audioContextRef.current.resume();
+      }
     } catch (e) {
-      console.warn('AudioContext setup skipped or blocked:', e);
+      console.warn('AudioContext setup skipped:', e);
     }
   };
 
@@ -148,6 +158,104 @@ export function App() {
     analyserRef.current.getByteFrequencyData(dataArray);
     const avg = dataArray.reduce((sum, val) => sum + val, 0) / dataArray.length;
     return avg / 255;
+  }, []);
+
+  // Generate synthetic sample audio track (30s pop chords)
+  const generateSampleAudio = async () => {
+    try {
+      const sampleRate = 44100;
+      const duration = 30;
+      const numSamples = sampleRate * duration;
+      const offlineCtx = new OfflineAudioContext(2, numSamples, sampleRate);
+
+      const chords = [
+        [261.63, 329.63, 392.00], // C major
+        [196.00, 246.94, 293.66], // G major
+        [220.00, 261.63, 329.63], // A minor
+        [174.61, 220.00, 261.63]  // F major
+      ];
+
+      chords.forEach((chord, chordIdx) => {
+        const startTime = chordIdx * 7.5;
+        chord.forEach(freq => {
+          const osc = offlineCtx.createOscillator();
+          const gain = offlineCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, startTime);
+          gain.gain.setValueAtTime(0.01, startTime);
+          gain.gain.exponentialRampToValueAtTime(0.12, startTime + 0.1);
+          gain.gain.exponentialRampToValueAtTime(0.01, startTime + 7.4);
+          osc.connect(gain);
+          gain.connect(offlineCtx.destination);
+          osc.start(startTime);
+          osc.stop(startTime + 7.5);
+        });
+      });
+
+      // Soft beat ticks
+      for (let t = 0; t < duration; t += 0.5) {
+        const osc = offlineCtx.createOscillator();
+        const gain = offlineCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(t % 1 === 0 ? 160 : 320, t);
+        gain.gain.setValueAtTime(0.08, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+        osc.connect(gain);
+        gain.connect(offlineCtx.destination);
+        osc.start(t);
+        osc.stop(t + 0.08);
+      }
+
+      const renderedBuffer = await offlineCtx.startRendering();
+      const wavBlob = audioBufferToWavBlob(renderedBuffer);
+      const blobUrl = URL.createObjectURL(wavBlob);
+      setAudioUrl(blobUrl);
+    } catch (err) {
+      console.warn('Failed to generate sample audio:', err);
+    }
+  };
+
+  // Load Initial Demo Lyrics & Audio
+  useEffect(() => {
+    const initialClips = convertToLyricClips(SAMPLE_LRC);
+    setLyrics(initialClips);
+    if (initialClips.length > 0) {
+      setSelectedClipId(initialClips[0].id);
+      setDuration(Math.max(30, initialClips[initialClips.length - 1].end_s + 5));
+    }
+    generateSampleAudio();
+  }, []);
+
+  // Parse URL hash/search for Suno bookmarklet import data
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const lrcData = searchParams.get('lrc') || hashParams.get('lrc');
+    const audioUrlParam = searchParams.get('audio_url') || hashParams.get('audio_url');
+
+    if (lrcData) {
+      try {
+        const decoded = decodeURIComponent(lrcData);
+        const importedClips = convertToLyricClips(decoded);
+        setLyrics(importedClips);
+        setSongTitle('Suno Import');
+        if (importedClips.length > 0) {
+          setSelectedClipId(importedClips[0].id);
+          setDuration(Math.max(30, importedClips[importedClips.length - 1].end_s + 5));
+        }
+      } catch (e) {
+        console.error('Failed to parse imported LRC', e);
+      }
+    }
+
+    if (audioUrlParam) {
+      try {
+        const decodedAudio = decodeURIComponent(audioUrlParam);
+        setAudioUrl(decodedAudio);
+      } catch (e) {
+        console.error('Failed to parse imported audio URL', e);
+      }
+    }
   }, []);
 
   // Animation Loop
@@ -175,11 +283,17 @@ export function App() {
 
   // Audio Play / Pause
   const handleTogglePlay = () => {
+    setupAudioContext();
+
     if (!audioRef.current) {
       setIsPlaying(!isPlaying);
       return;
     }
-    setupAudioContext();
+
+    if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+      audioContextRef.current.resume();
+    }
+
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
@@ -187,7 +301,7 @@ export function App() {
       audioRef.current.play().then(() => {
         setIsPlaying(true);
       }).catch(e => {
-        console.warn('Audio play prevented', e);
+        console.warn('Audio play error:', e);
         setIsPlaying(true);
       });
     }
@@ -235,6 +349,7 @@ export function App() {
     setLyrics(clips);
     setSongTitle('AMUVI PRO Demo');
     if (clips.length > 0) setSelectedClipId(clips[0].id);
+    generateSampleAudio();
   };
 
   // Start Video Export
@@ -413,6 +528,51 @@ export function App() {
       />
     </div>
   );
+}
+
+// Helper to convert AudioBuffer to WAV Blob for synthesized sample audio playback
+function audioBufferToWavBlob(buffer: AudioBuffer): Blob {
+  const numOfChan = buffer.numberOfChannels;
+  const length = buffer.length * numOfChan * 2 + 44;
+  const out = new DataView(new ArrayBuffer(length));
+  let channels: Float32Array[] = [];
+  let sampleRate = buffer.sampleRate;
+  let offset = 0;
+
+  function writeString(str: string) {
+    for (let i = 0; i < str.length; i++) {
+      out.setUint8(offset++, str.charCodeAt(i));
+    }
+  }
+
+  writeString('RIFF');
+  out.setUint32(offset, length - 8, true); offset += 4;
+  writeString('WAVE');
+  writeString('fmt ');
+  out.setUint32(offset, 16, true); offset += 4;
+  out.setUint16(offset, 1, true); offset += 2;
+  out.setUint16(offset, numOfChan, true); offset += 2;
+  out.setUint32(offset, sampleRate, true); offset += 4;
+  out.setUint32(offset, sampleRate * 2 * numOfChan, true); offset += 4;
+  out.setUint16(offset, numOfChan * 2, true); offset += 2;
+  out.setUint16(offset, 16, true); offset += 2;
+  writeString('data');
+  out.setUint32(offset, length - offset - 4, true); offset += 4;
+
+  for (let i = 0; i < buffer.numberOfChannels; i++) {
+    channels.push(buffer.getChannelData(i));
+  }
+
+  for (let i = 0; i < buffer.length; i++) {
+    for (let ch = 0; ch < numOfChan; ch++) {
+      let sample = Math.max(-1, Math.min(1, channels[ch][i]));
+      sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+      out.setInt16(offset, sample, true);
+      offset += 2;
+    }
+  }
+
+  return new Blob([out], { type: 'audio/wav' });
 }
 
 export default App;
