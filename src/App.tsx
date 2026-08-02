@@ -376,17 +376,16 @@ export function App() {
         songTitle={songTitle}
       />
 
-      {/* Clean Workspace Layout */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-        {/* Stage / Preview Section */}
-        <div className="flex-1 flex flex-col items-center justify-center p-3 sm:p-5 relative">
-          
+      {/* Main App Layout */}
+      <div className="flex-1 flex flex-col overflow-hidden relative">
+        {/* Top Area: Preview Monitor Stage */}
+        <div className="h-[340px] sm:h-[370px] shrink-0 flex flex-col items-center justify-center p-3 border-b border-slate-200/80 relative bg-slate-900/5">
           {/* Aspect Ratio Toggle Bar */}
-          <div className="flex items-center gap-2 mb-3 bg-white/80 backdrop-blur-md border border-slate-200/80 px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs">
+          <div className="flex items-center gap-2 mb-2 bg-white/80 backdrop-blur-md border border-slate-200/80 px-3 py-1 rounded-xl text-xs font-bold shadow-xs">
             <span className="text-slate-500">表示モード:</span>
             <button
               onClick={() => setSettings(s => ({ ...s, aspectRatio: '16:9' }))}
-              className={`px-3 py-1 rounded-lg transition ${
+              className={`px-3 py-0.5 rounded-lg transition ${
                 settings.aspectRatio === '16:9' 
                   ? 'bg-blue-600 text-white shadow-xs font-extrabold' 
                   : 'text-slate-500 hover:text-slate-800'
@@ -396,7 +395,7 @@ export function App() {
             </button>
             <button
               onClick={() => setSettings(s => ({ ...s, aspectRatio: '9:16' }))}
-              className={`px-3 py-1 rounded-lg transition ${
+              className={`px-3 py-0.5 rounded-lg transition ${
                 settings.aspectRatio === '9:16' 
                   ? 'bg-blue-600 text-white shadow-xs font-extrabold' 
                   : 'text-slate-500 hover:text-slate-800'
@@ -407,7 +406,7 @@ export function App() {
           </div>
 
           {/* Fixed 16:9 Monitor Stage Frame */}
-          <div className="w-full max-w-[680px] aspect-[16/9] max-h-[360px] sm:max-h-[400px] rounded-2xl border border-slate-800 bg-[#03050a] shadow-2xl relative flex items-center justify-center p-2 overflow-hidden">
+          <div className="w-full max-w-[620px] aspect-[16/9] max-h-[300px] sm:max-h-[320px] rounded-2xl border border-slate-800 bg-[#03050a] shadow-2xl relative flex items-center justify-center p-2 overflow-hidden">
             {/* Canvas Rendering Box (Fits 16:9 or 9:16 inside container) */}
             <div className={`relative transition-all h-full ${
               settings.aspectRatio === '9:16'
@@ -428,31 +427,34 @@ export function App() {
           </div>
         </div>
 
-        {/* Right Inspector Panel */}
-        <div className="w-full md:w-88 shrink-0 border-t md:border-t-0 md:border-l border-slate-200/80">
-          <CharInspector
-            selectedClip={selectedClip}
-            onUpdateClip={handleUpdateClip}
-            onToggleSplit={handleToggleSplit}
-            settings={settings}
-            onUpdateSettings={(newS) => setSettings(s => ({ ...s, ...newS }))}
-          />
-        </div>
-      </div>
+        {/* Bottom Workspace Split (Left: Inspector & Menu, Right: Vertical Timeline) */}
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+          {/* Bottom-Left: Inspector & Menu */}
+          <div className="w-full md:w-1/2 h-1/2 md:h-full shrink-0 overflow-y-auto border-b md:border-b-0 md:border-r border-slate-200/80">
+            <CharInspector
+              selectedClip={selectedClip}
+              onUpdateClip={handleUpdateClip}
+              onToggleSplit={handleToggleSplit}
+              settings={settings}
+              onUpdateSettings={(newS) => setSettings(s => ({ ...s, ...newS }))}
+            />
+          </div>
 
-      {/* Bottom Visual Timeline */}
-      <div className="h-44 shrink-0 border-t border-slate-200/80">
-        <Timeline
-          lyrics={lyrics}
-          currentTime={currentTime}
-          duration={duration}
-          onSeek={handleSeek}
-          selectedClipId={selectedClipId}
-          onSelectClip={setSelectedClipId}
-          onToggleSplit={handleToggleSplit}
-          isPlaying={isPlaying}
-          onTogglePlay={handleTogglePlay}
-        />
+          {/* Bottom-Right: Vertical Timeline */}
+          <div className="w-full md:w-1/2 h-1/2 md:h-full flex-1 overflow-hidden">
+            <Timeline
+              lyrics={lyrics}
+              currentTime={currentTime}
+              duration={duration}
+              onSeek={handleSeek}
+              selectedClipId={selectedClipId}
+              onSelectClip={setSelectedClipId}
+              onToggleSplit={handleToggleSplit}
+              isPlaying={isPlaying}
+              onTogglePlay={handleTogglePlay}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Suno Bookmarklet Modal */}
