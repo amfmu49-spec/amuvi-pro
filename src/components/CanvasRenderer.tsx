@@ -1,4 +1,4 @@
-import { useEffect, useRef, useImperativeHandle, forwardRef, useCallback } from 'react';
+import { useEffect, useRef, useImperativeHandle, forwardRef, useCallback, useState } from 'react';
 import type { LyricLine } from '../lib/lrcParser';
 import type { AppSettings, CustomConfigMap } from '../types';
 
@@ -10,6 +10,7 @@ interface Props {
   getAudioEnergy?: () => number;
   bgMediaUrl: string | null;
   bgMediaType: 'image' | 'video';
+  onUpdateClipPosition?: (clipId: string, x: number, y: number) => void;
 }
 
 const KANJI_REGEX = /[一-龯]/;
@@ -34,7 +35,7 @@ export interface CanvasRendererRef extends HTMLCanvasElement {
 }
 
 export const CanvasRenderer = forwardRef<CanvasRendererRef, Props>(({
-  lyrics, currentTime, settings, customConfigs = {}, getAudioEnergy, bgMediaUrl, bgMediaType
+  lyrics, currentTime, settings, customConfigs = {}, getAudioEnergy, bgMediaUrl, bgMediaType, onUpdateClipPosition
 }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
@@ -379,10 +380,10 @@ export const CanvasRenderer = forwardRef<CanvasRendererRef, Props>(({
         }
 
         ctx.save();
-        ctx.translate(width/2, height/2);
+        ctx.translate(width / 2 + (activeLine.x || 0), height / 2 + (activeLine.y || 0));
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        // Enhanced shadows similar to Assam
+        // Enhanced shadows
         ctx.shadowColor = `rgba(0,0,0,0.9)`;
         ctx.shadowBlur = 14 * (width/1000);
         ctx.shadowOffsetX = 0;
@@ -966,15 +967,78 @@ export const CanvasRenderer = forwardRef<CanvasRendererRef, Props>(({
     return () => cancelAnimationFrame(reqId);
   }, [currentTime]);
 
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!canvasRef.current || !onUpdateClipPosition) return;
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const targetW = settings.aspectRatio === '16:9' ? 1920 : 1080;
+    const targetH = settings.aspectRatio === '16:9' ? 1080 : 1920;
+
+    const clickX = ((e.clientX - rect.left) / rect.width) * targetW - targetW / 2;
+    const clickY = ((e.clientY - rect.top) / rect.height) * targetH - targetH / 2;
+
+    let activeId: string | null = null;
+    for (let i = lyrics.length - 1; i >= 0; i--) {
+      if (currentTime >= lyrics[i].time) {
+        activeId = lyrics[i].id;
+        break;
+      }
+    }
+    if (activeId) {
+      try {
+        (canvas as any).setPointerCapture(e.pointerId);
+      } catch (err) {}
+      setIsDragging(true);
+      onUpdateClipPosition(activeId, Math.round(clickX), Math.round(clickY));
+    }
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isDragging || !canvasRef.current || !onUpdateClipPosition) return;
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const targetW = settings.aspectRatio === '16:9' ? 1920 : 1080;
+    const targetH = settings.aspectRatio === '16:9' ? 1080 : 1920;
+
+    const moveX = ((e.clientX - rect.left) / rect.width) * targetW - targetW / 2;
+    const moveY = ((e.clientY - rect.top) / rect.height) * targetH - targetH / 2;
+
+    let activeId: string | null = null;
+    for (let i = lyrics.length - 1; i >= 0; i--) {
+      if (currentTime >= lyrics[i].time) {
+        activeId = lyrics[i].id;
+        break;
+      }
+    }
+    if (activeId) {
+      onUpdateClipPosition(activeId, Math.round(moveX), Math.round(moveY));
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (isDragging && canvasRef.current) {
+      try {
+        (canvasRef.current as any).releasePointerCapture(e.pointerId);
+      } catch (err) {}
+      setIsDragging(false);
+    }
+  };
+
   return (
     <canvas 
       ref={canvasRef} 
       className="canvas-renderer"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
       style={{
         width: '100%',
         height: '100%',
         objectFit: 'contain',
-        backgroundColor: '#000'
+        backgroundColor: '#000',
+        cursor: isDragging ? 'grabbing' : 'grab'
       }}
     />
   );

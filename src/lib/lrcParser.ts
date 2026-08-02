@@ -6,6 +6,8 @@ export interface LyricLine {
   endTime?: number; // in milliseconds
   text: string;
   charTimings?: CharTiming[];
+  x?: number;
+  y?: number;
 }
 
 export function parseLrc(content: string): LyricLine[] {

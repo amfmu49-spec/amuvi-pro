@@ -330,13 +330,20 @@ export function App() {
     }
   };
 
+  // Handle Drag & Drop Position Update
+  const handleUpdateClipPosition = (clipId: string, x: number, y: number) => {
+    setLyrics(prev => prev.map(clip => clip.id === clipId ? { ...clip, x, y } : clip));
+  };
+
   // Transform LyricClip to format required by CanvasRenderer
   const rendererLyrics = lyrics.map(c => ({
     id: c.id,
     time: c.start_s * 1000,
     endTime: c.end_s * 1000,
     text: c.text,
-    charTimings: c.charTimings
+    charTimings: c.charTimings,
+    x: c.x,
+    y: c.y
   }));
 
   // Build customConfigs for character level overrides if clip is split
@@ -421,6 +428,7 @@ export function App() {
                 getAudioEnergy={getAudioEnergy}
                 bgMediaUrl={bgMediaUrl}
                 bgMediaType="image"
+                onUpdateClipPosition={handleUpdateClipPosition}
               />
             </div>
           </div>
