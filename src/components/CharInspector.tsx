@@ -8,6 +8,7 @@ interface CharInspectorProps {
   onToggleSplit: (clipId: string) => void;
   settings: AppSettings;
   onUpdateSettings: (newSettings: Partial<AppSettings>) => void;
+  onAudioUpload?: (file: File) => void;
 }
 
 export const CharInspector: React.FC<CharInspectorProps> = ({
@@ -15,7 +16,8 @@ export const CharInspector: React.FC<CharInspectorProps> = ({
   onUpdateClip,
   onToggleSplit,
   settings,
-  onUpdateSettings
+  onUpdateSettings,
+  onAudioUpload
 }) => {
   return (
     <div className="flex flex-col h-full bg-white/70 backdrop-blur-xl border-l border-slate-200/80 text-slate-900 p-4 sm:p-5 gap-5 overflow-y-auto custom-scrollbar">
@@ -27,6 +29,27 @@ export const CharInspector: React.FC<CharInspectorProps> = ({
             演出 & 文字編集
           </h3>
         </div>
+      </div>
+
+      {/* Audio File Selection Section */}
+      <div className="flex flex-col gap-2 bg-white/90 border border-slate-200/80 p-3.5 rounded-2xl shadow-xs">
+        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider font-mono">
+          🎵 音楽ファイル
+        </span>
+        <label className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 font-bold text-xs cursor-pointer hover:bg-blue-100 transition shadow-xs">
+          <span>📁 MP3 / WAV ファイルを読み込む</span>
+          <input
+            type="file"
+            accept="audio/*"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file && onAudioUpload) {
+                onAudioUpload(file);
+              }
+            }}
+            className="hidden"
+          />
+        </label>
       </div>
 
       {/* Selected Clip Detail & Char Breakout Section */}

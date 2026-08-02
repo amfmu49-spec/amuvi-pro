@@ -160,7 +160,66 @@ export function App() {
     return avg / 255;
   }, []);
 
-  // Load Initial Demo Lyrics
+  // Generate 30s Piano & Melody Demo Audio Track
+  const generateDemoSongAudio = async () => {
+    try {
+      const sampleRate = 44100;
+      const duration = 30;
+      const numSamples = sampleRate * duration;
+      const offlineCtx = new OfflineAudioContext(2, numSamples, sampleRate);
+
+      // Pop melody notes (C4, E4, G4, A4, C5)
+      const melodyNotes = [261.63, 329.63, 392.00, 440.00, 523.25, 392.00, 329.63, 261.63];
+      for (let i = 0; i < 60; i++) {
+        const noteTime = i * 0.5;
+        const freq = melodyNotes[i % melodyNotes.length];
+        const osc = offlineCtx.createOscillator();
+        const gain = offlineCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, noteTime);
+        gain.gain.setValueAtTime(0.01, noteTime);
+        gain.gain.exponentialRampToValueAtTime(0.18, noteTime + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, noteTime + 0.45);
+        osc.connect(gain);
+        gain.connect(offlineCtx.destination);
+        osc.start(noteTime);
+        osc.stop(noteTime + 0.5);
+      }
+
+      // Bass Chords (C - G - Am - F)
+      const chords = [
+        [130.81, 164.81, 196.00], // C3
+        [98.00, 123.47, 146.83],  // G2
+        [110.00, 130.81, 164.81], // A2m
+        [87.31, 110.00, 130.81]   // F2
+      ];
+      chords.forEach((chord, idx) => {
+        const chordTime = idx * 7.5;
+        chord.forEach(freq => {
+          const osc = offlineCtx.createOscillator();
+          const gain = offlineCtx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, chordTime);
+          gain.gain.setValueAtTime(0.01, chordTime);
+          gain.gain.exponentialRampToValueAtTime(0.12, chordTime + 0.1);
+          gain.gain.exponentialRampToValueAtTime(0.01, chordTime + 7.4);
+          osc.connect(gain);
+          gain.connect(offlineCtx.destination);
+          osc.start(chordTime);
+          osc.stop(chordTime + 7.5);
+        });
+      });
+
+      const renderedBuffer = await offlineCtx.startRendering();
+      const wavBlob = audioBufferToWavBlob(renderedBuffer);
+      const blobUrl = URL.createObjectURL(wavBlob);
+      setAudioUrl(blobUrl);
+    } catch (err) {
+      console.warn('Failed to generate demo song audio:', err);
+    }
+  };
+
+  // Load Initial Demo Lyrics & Audio
   useEffect(() => {
     const initialClips = convertToLyricClips(SAMPLE_LRC);
     setLyrics(initialClips);
@@ -168,6 +227,7 @@ export function App() {
       setSelectedClipId(initialClips[0].id);
       setDuration(Math.max(30, initialClips[initialClips.length - 1].end_s + 5));
     }
+    generateDemoSongAudio();
   }, []);
 
   // Parse URL hash/search for Suno bookmarklet import data
@@ -353,19 +413,25 @@ export function App() {
 
   const selectedClip = lyrics.find(c => c.id === selectedClipId) || null;
 
+  // Handle Audio File Upload
+  const handleAudioUpload = (file: File) => {
+    const url = URL.createObjectURL(file);
+    setAudioUrl(url);
+    setSongTitle(file.name.replace(/\.[^/.]+$/, ''));
+  };
+
   return (
     <div className="flex flex-col h-[100dvh] w-screen bg-[#f2f4f8] text-slate-900 overflow-hidden font-sans">
-      {/* Hidden Audio Element */}
-      {audioUrl && (
-        <audio
-          ref={audioRef}
-          src={audioUrl}
-          onLoadedMetadata={() => {
-            if (audioRef.current) setDuration(audioRef.current.duration);
-          }}
-          onEnded={() => setIsPlaying(false)}
-        />
-      )}
+      {/* Audio Element (Always active in DOM for sound playback) */}
+      <audio
+        ref={audioRef}
+        src={audioUrl || undefined}
+        crossOrigin="anonymous"
+        onLoadedMetadata={() => {
+          if (audioRef.current) setDuration(audioRef.current.duration);
+        }}
+        onEnded={() => setIsPlaying(false)}
+      />
 
       {/* Header Bar */}
       <Header
@@ -378,10 +444,10 @@ export function App() {
 
       {/* Main App Layout */}
       <div className="flex-1 flex flex-col overflow-hidden relative">
-        {/* Top Area: Preview Monitor Stage */}
-        <div className="h-[340px] sm:h-[370px] shrink-0 flex flex-col items-center justify-center p-3 border-b border-slate-200/80 relative bg-slate-900/5">
+        {/* Top Area: Compact Preview Monitor Stage (Zero Wasted Space Above 表示モード) */}
+        <div className="shrink-0 flex flex-col items-center justify-start pt-1.5 pb-2.5 px-3 border-b border-slate-200/80 relative bg-slate-900/5">
           {/* Aspect Ratio Toggle Bar */}
-          <div className="flex items-center gap-2 mb-2 bg-white/80 backdrop-blur-md border border-slate-200/80 px-3 py-1 rounded-xl text-xs font-bold shadow-xs">
+          <div className="flex items-center gap-2 mb-1.5 bg-white/90 backdrop-blur-md border border-slate-200/80 px-3 py-1 rounded-xl text-xs font-bold shadow-xs">
             <span className="text-slate-500">表示モード:</span>
             <button
               onClick={() => setSettings(s => ({ ...s, aspectRatio: '16:9' }))}
@@ -406,7 +472,7 @@ export function App() {
           </div>
 
           {/* Fixed 16:9 Monitor Stage Frame */}
-          <div className="w-full max-w-[620px] aspect-[16/9] max-h-[300px] sm:max-h-[320px] rounded-2xl border border-slate-800 bg-[#03050a] shadow-2xl relative flex items-center justify-center p-2 overflow-hidden">
+          <div className="w-full max-w-[560px] aspect-[16/9] max-h-[260px] sm:max-h-[290px] rounded-2xl border border-slate-800 bg-[#03050a] shadow-2xl relative flex items-center justify-center p-1.5 overflow-hidden">
             {/* Canvas Rendering Box (Fits 16:9 or 9:16 inside container) */}
             <div className={`relative transition-all h-full ${
               settings.aspectRatio === '9:16'
@@ -437,6 +503,7 @@ export function App() {
               onToggleSplit={handleToggleSplit}
               settings={settings}
               onUpdateSettings={(newS) => setSettings(s => ({ ...s, ...newS }))}
+              onAudioUpload={handleAudioUpload}
             />
           </div>
 
@@ -464,6 +531,51 @@ export function App() {
       />
     </div>
   );
+}
+
+// Helper to convert AudioBuffer to WAV Blob for demo melody audio playback
+function audioBufferToWavBlob(buffer: AudioBuffer): Blob {
+  const numOfChan = buffer.numberOfChannels;
+  const length = buffer.length * numOfChan * 2 + 44;
+  const out = new DataView(new ArrayBuffer(length));
+  let channels: Float32Array[] = [];
+  let sampleRate = buffer.sampleRate;
+  let offset = 0;
+
+  function writeString(str: string) {
+    for (let i = 0; i < str.length; i++) {
+      out.setUint8(offset++, str.charCodeAt(i));
+    }
+  }
+
+  writeString('RIFF');
+  out.setUint32(offset, length - 8, true); offset += 4;
+  writeString('WAVE');
+  writeString('fmt ');
+  out.setUint32(offset, 16, true); offset += 4;
+  out.setUint16(offset, 1, true); offset += 2;
+  out.setUint16(offset, numOfChan, true); offset += 2;
+  out.setUint32(offset, sampleRate, true); offset += 4;
+  out.setUint32(offset, sampleRate * 2 * numOfChan, true); offset += 4;
+  out.setUint16(offset, numOfChan * 2, true); offset += 2;
+  out.setUint16(offset, 16, true); offset += 2;
+  writeString('data');
+  out.setUint32(offset, length - offset - 4, true); offset += 4;
+
+  for (let i = 0; i < buffer.numberOfChannels; i++) {
+    channels.push(buffer.getChannelData(i));
+  }
+
+  for (let i = 0; i < buffer.length; i++) {
+    for (let ch = 0; ch < numOfChan; ch++) {
+      let sample = Math.max(-1, Math.min(1, channels[ch][i]));
+      sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+      out.setInt16(offset, sample, true);
+      offset += 2;
+    }
+  }
+
+  return new Blob([out], { type: 'audio/wav' });
 }
 
 export default App;
