@@ -304,7 +304,7 @@ export function App() {
   const selectedClip = lyrics.find(c => c.id === selectedClipId) || null;
 
   return (
-    <div className="flex flex-col h-[100dvh] w-screen bg-[#070a12] text-slate-100 overflow-hidden font-sans">
+    <div className="flex flex-col h-[100dvh] w-screen bg-[#f2f4f8] text-slate-900 overflow-hidden font-sans">
       {/* Hidden Audio Element */}
       {audioUrl && (
         <audio
@@ -330,17 +330,17 @@ export function App() {
       {/* Clean Workspace Layout */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         {/* Stage / Preview Section */}
-        <div className="flex-1 flex flex-col items-center justify-center p-3 sm:p-5 bg-[#050711] relative">
+        <div className="flex-1 flex flex-col items-center justify-center p-3 sm:p-5 relative">
           
           {/* Aspect Ratio Toggle Bar */}
-          <div className="flex items-center gap-2 mb-3 bg-slate-900/90 border border-slate-800 px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm">
-            <span className="text-slate-400">表示モード:</span>
+          <div className="flex items-center gap-2 mb-3 bg-white/80 backdrop-blur-md border border-slate-200/80 px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs">
+            <span className="text-slate-500">表示モード:</span>
             <button
               onClick={() => setSettings(s => ({ ...s, aspectRatio: '16:9' }))}
               className={`px-3 py-1 rounded-lg transition ${
                 settings.aspectRatio === '16:9' 
-                  ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-extrabold' 
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-blue-600 text-white shadow-xs font-extrabold' 
+                  : 'text-slate-500 hover:text-slate-800'
               }`}
             >
               💻 16:9 標準
@@ -349,8 +349,8 @@ export function App() {
               onClick={() => setSettings(s => ({ ...s, aspectRatio: '9:16' }))}
               className={`px-3 py-1 rounded-lg transition ${
                 settings.aspectRatio === '9:16' 
-                  ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-extrabold' 
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-blue-600 text-white shadow-xs font-extrabold' 
+                  : 'text-slate-500 hover:text-slate-800'
               }`}
             >
               📱 9:16 縦動画
@@ -380,7 +380,7 @@ export function App() {
         </div>
 
         {/* Right Inspector Panel */}
-        <div className="w-full md:w-88 shrink-0 border-t md:border-t-0 md:border-l border-slate-800/80">
+        <div className="w-full md:w-88 shrink-0 border-t md:border-t-0 md:border-l border-slate-200/80">
           <CharInspector
             selectedClip={selectedClip}
             onUpdateClip={handleUpdateClip}
@@ -392,7 +392,7 @@ export function App() {
       </div>
 
       {/* Bottom Visual Timeline */}
-      <div className="h-44 shrink-0 border-t border-slate-800/80">
+      <div className="h-44 shrink-0 border-t border-slate-200/80">
         <Timeline
           lyrics={lyrics}
           currentTime={currentTime}
