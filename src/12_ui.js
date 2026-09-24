@@ -13,6 +13,7 @@ const ICON = {
 };
 
 const S = { project: null, plan: null, audio: null, renderer: new J.Renderer(), playing: false, t: 0, t0: 0, loop: true, need: true, exporting: null, tap: null, slow: false, lineEls: [], curLine: -2 };
+window._S = S;  // expose for timeline module
 
 /* WebAudio player (works inside sandboxed pages where blob media may be blocked) */
 const AP = {
@@ -196,6 +197,7 @@ function seek(t) {
   else S.t0 = performance.now() - S.t * 1000;
   S.need = true;
 }
+window._seek = seek;  // expose for timeline module
 
 /* ---------------- timeline ---------------- */
 const layoutHue = k => (J.LAYOUT_ORDER.indexOf(k) * 37 + 30) % 360;

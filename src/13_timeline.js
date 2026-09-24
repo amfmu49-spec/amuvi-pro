@@ -191,7 +191,7 @@
           b.start = ns; b.end = b.end + diff; b.dur = b.end - b.start;
           updateSrt(currentBlocks);
         } else {
-          if (window.seek) seek(b.start);
+          if (window._seek) window._seek(b.start);
         }
       });
 
@@ -265,16 +265,39 @@
     // initial render
     if (srtEl.value.trim()) onSrtChange();
 
-    // playhead
+    // playhead + active block highlight
     const outer = document.getElementById('amuviDragTimeline');
+    let lastActiveIdx = -1;
     (function raf() {
+      const S = window._S;
       const ph = document.getElementById('amuviTimelinePlayhead');
-      if (ph && outer && window.S) {
-        const x = (S.t || 0) * PX_PER_SEC;
+      if (ph && outer && S) {
+        const t = S.t || 0;
+        const x = t * PX_PER_SEC;
         ph.style.left = x + 'px';
+
+        // auto-scroll to follow playhead during playback
         if (S.playing) {
           const vl = outer.scrollLeft, vr = vl + outer.clientWidth;
           if (x > vr - 60 || x < vl) outer.scrollLeft = x - 80;
+        }
+
+        // highlight the currently playing block
+        const activeIdx = currentBlocks.findIndex(b => t >= b.start && t < b.end);
+        if (activeIdx !== lastActiveIdx) {
+          lastActiveIdx = activeIdx;
+          const track = document.getElementById('amuviTimelineTrack');
+          if (track) {
+            track.querySelectorAll('.amuvi-tl-block').forEach((el, i) => {
+              if (i === activeIdx) {
+                el.style.outline = '2px solid #fff';
+                el.style.boxShadow = '0 0 12px 3px rgba(255,255,255,0.6)';
+              } else {
+                el.style.outline = '';
+                el.style.boxShadow = '0 2px 6px rgba(0,0,0,.4)';
+              }
+            });
+          }
         }
       }
       requestAnimationFrame(raf);
