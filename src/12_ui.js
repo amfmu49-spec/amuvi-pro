@@ -600,7 +600,12 @@ async function runExport(kind) {
   const boxes = [...document.querySelectorAll('.exp-box')];
   const setText = m => boxes.forEach(b => { b.querySelector('.exp-text').textContent = m; });
   const txt = { set textContent(m) { setText(m); }, get textContent() { return boxes[0].querySelector('.exp-text').textContent; } };
-  boxes.forEach(b => { b.hidden = false; b.querySelector('.exp-bar').style.width = '0%'; });
+  boxes.forEach(b => {
+    b.hidden = false;
+    b.querySelector('.exp-bar').style.width = '0%';
+    const d = b.querySelector('.exp-done-area');
+    if (d) d.style.display = 'none';
+  });
   setText('準備中…');
   EXP_BTNS.forEach(id => { $(id).disabled = true; });
   const onProgress = (p, m) => { boxes.forEach(b => { b.querySelector('.exp-bar').style.width = (p * 100).toFixed(1) + '%'; }); setText(m); };
@@ -609,8 +614,41 @@ async function runExport(kind) {
     await J.ensureFonts(S.project.lyrics + (S.project.title || '') + (S.project.artist || '') + HUD_CHARS, J.fontsOfPlan(S.plan));
     if (kind === 'mp4') {
       const r = await J.exportMP4({ plan: S.plan, project: S.project, audio: S.project.includeAudio !== false ? S.audio : null, quality: S.project.quality || 'high', onProgress, signal: ac.signal });
-      txt.textContent = `完成 ${(r.blob.size / 1048576).toFixed(1)}MB・${r.codec}${r.audio ? ' + ' + r.audio.toUpperCase() : ''}・${((performance.now() - t0) / 1000).toFixed(0)}秒`;
-      const res = await J.saveFile(baseName() + '.mp4', r.blob);
+      const sizeMB = (r.blob.size / 1048576).toFixed(1);
+      const elapsed = ((performance.now() - t0) / 1000).toFixed(0);
+      txt.textContent = `完成 ${sizeMB}MB・${r.codec}${r.audio ? ' + ' + r.audio.toUpperCase() : ''}・${elapsed}秒`;
+      
+      const fileName = baseName() + '.mp4';
+      const blobUrl = URL.createObjectURL(r.blob);
+      
+      boxes.forEach(b => {
+        let doneArea = b.querySelector('.exp-done-area');
+        if (!doneArea) {
+          doneArea = document.createElement('div');
+          doneArea.className = 'exp-done-area';
+          b.appendChild(doneArea);
+        }
+        doneArea.style.display = 'block';
+        doneArea.innerHTML = `
+          <div style="background:linear-gradient(135deg,#065f46,#047857); color:#fff; border-radius:8px; padding:14px; margin-top:10px; box-shadow:0 4px 14px rgba(4,120,87,0.35); text-align:left;">
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+              <div>
+                <div style="font-weight:700; font-size:14px;">🎉 MP4動画が完成しました！ (${sizeMB}MB)</div>
+                <div style="font-size:11px; color:#a7f3d0; margin-top:2px;">自動保存されない場合は下のボタンを押してください</div>
+                ${r.notice ? `<div style="font-size:11px; color:#fde68a; margin-top:4px; font-weight:600;">⚠️ ${r.notice}</div>` : ''}
+              </div>
+              <a href="${blobUrl}" download="${fileName}" style="display:inline-flex; align-items:center; gap:6px; background:#fff; color:#065f46; font-weight:800; font-size:13px; padding:8px 18px; border-radius:6px; text-decoration:none; box-shadow:0 2px 6px rgba(0,0,0,0.2);">
+                📥 今すぐ保存 (${sizeMB}MB)
+              </a>
+            </div>
+            <div style="margin-top:10px;">
+              <video controls src="${blobUrl}" style="width:100%; max-height:220px; border-radius:6px; background:#000;"></video>
+            </div>
+          </div>
+        `;
+      });
+
+      const res = await J.saveFile(fileName, r.blob);
       if (res === 'declined') txt.textContent += '（保存はキャンセルされました）';
     } else {
       const blob = await J.exportPNGZip({ plan: S.plan, project: S.project, transparent: kind === 'pnga', layers: kind === 'pngl', onProgress, signal: ac.signal });
@@ -618,8 +656,37 @@ async function runExport(kind) {
       await J.saveFile(baseName() + (kind === 'pnga' ? '_alpha' : kind === 'pngl' ? '_layers' : '') + '_png.zip', blob);
     }
   } catch (e) {
-    txt.textContent = 'エラー: ' + (e && e.message ? e.message : e);
+    const errMsg = (e && e.message ? e.message : String(e));
+    txt.textContent = 'エラー: ' + errMsg;
     console.error(e);
+    boxes.forEach(b => {
+      let doneArea = b.querySelector('.exp-done-area');
+      if (!doneArea) {
+        doneArea = document.createElement('div');
+        doneArea.className = 'exp-done-area';
+        b.appendChild(doneArea);
+      }
+      doneArea.style.display = 'block';
+      doneArea.innerHTML = `
+        <div style="background:#450a0a; border:1px solid #b91c1c; color:#fecaca; border-radius:8px; padding:14px; margin-top:10px; text-align:left;">
+          <div style="font-weight:700; font-size:13px; color:#f87171;">⚠️ 出力エラーが発生しました</div>
+          <div style="font-size:12px; margin-top:4px; font-family:monospace; word-break:break-all; background:rgba(0,0,0,0.3); padding:6px; border-radius:4px;">${errMsg}</div>
+          <div style="margin-top:10px; display:flex; gap:8px;">
+            <button class="btn-retry-no-audio" style="background:#dc2626; color:#fff; border:none; padding:8px 14px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer;">
+              🔇 音声なしで書き出してみる
+            </button>
+          </div>
+        </div>
+      `;
+      const retryBtn = doneArea.querySelector('.btn-retry-no-audio');
+      if (retryBtn) {
+        retryBtn.onclick = () => {
+          S.project.includeAudio = false;
+          doneArea.style.display = 'none';
+          runExport('mp4');
+        };
+      }
+    });
   } finally {
     S.exporting = null; S.need = true;
     EXP_BTNS.forEach(id => { $(id).disabled = false; });

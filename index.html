@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>AMUVI PRO v2.3 (JIZURA)</title>
+<title>AMUVI PRO v2.4 (JIZURA)</title>
 <meta name="description" content="歌詞を入れると文字PV（リリックモーション）を自動で組み立てて MP4 に書き出すブラウザアプリ">
 <link rel="canonical" href="https://852wa.github.io/JIZURA/">
 <link rel="alternate" hreflang="ja" href="https://852wa.github.io/JIZURA/">
 <link rel="alternate" hreflang="en" href="https://852wa.github.io/JIZURA/en/">
 <meta property="og:type" content="website">
-<meta property="og:title" content="AMUVI PRO v2.3 (JIZURA)">
+<meta property="og:title" content="AMUVI PRO v2.4 (JIZURA)">
 <meta property="og:description" content="歌詞を入れると文字PV（リリックモーション）を自動で組み立てて MP4 に書き出すブラウザアプリ">
 <meta property="og:url" content="https://852wa.github.io/JIZURA/">
 <meta name="twitter:card" content="summary">
@@ -290,7 +290,7 @@ body {
   <header class="bar amuvi-header">
     <div class="brand">
       <span class="word amuvi-title">AMUVI PRO</span>
-      <span class="amuvi-version" style="font-size:11px; font-weight:700; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; border-radius:10px; padding:2px 8px; margin-left:8px; vertical-align:middle; letter-spacing:0.5px; box-shadow:0 2px 6px rgba(99,102,241,0.3);">v2.3</span>
+      <span class="amuvi-version" style="font-size:11px; font-weight:700; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; border-radius:10px; padding:2px 8px; margin-left:8px; vertical-align:middle; letter-spacing:0.5px; box-shadow:0 2px 6px rgba(99,102,241,0.3);">v2.4</span>
     </div>
     <div class="proj" style="display:none;">
       <input id="songTitle" type="text" placeholder="曲名">
@@ -342,7 +342,7 @@ body {
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
             <div style="display:flex; align-items:center; gap:8px;">
               <h3 class="amuvi-h2" style="font-size:16px; margin:0;">⏱ タイムライン</h3>
-              <span style="font-size:10px; font-weight:600; color:#cbd5e1; background:#334155; padding:2px 6px; border-radius:4px; border:1px solid #475569;">v2.3 音声安定化</span>
+              <span style="font-size:10px; font-weight:600; color:#cbd5e1; background:#334155; padding:2px 6px; border-radius:4px; border:1px solid #475569;">v2.4 保存ボタン付き</span>
             </div>
             <span style="font-size:11px; color:#94a3b8;">← スクロール | ブロックを左右にドラッグ | クリックで移動</span>
           </div>
@@ -4184,8 +4184,8 @@ J.pickVideoCodec = async (w, h, fps, bitrate, preferSoftware = false) => {
 };
 J.pickAudioCodec = async (sr, chn) => {
   if (typeof AudioEncoder === 'undefined') return null;
-  // Prioritize opus first because Chromium on Windows has a known bug where mp4a.40.2 (AAC) flush() hangs or throws EncodingError
-  for (const c of [{ codec: 'opus', mux: 'opus', sr: 48000 }, { codec: 'mp4a.40.2', mux: 'aac', sr: 48000 }]) {
+  // Prioritize AAC (mp4a.40.2) for universal MP4 player compatibility, Opus as fallback
+  for (const c of [{ codec: 'mp4a.40.2', mux: 'aac', sr: 48000 }, { codec: 'opus', mux: 'opus', sr: 48000 }]) {
     try { const s = await AudioEncoder.isConfigSupported({ codec: c.codec, sampleRate: c.sr, numberOfChannels: 2, bitrate: 128000 }); if (s.supported) return c; } catch (e) {}
   }
   return null;
@@ -4194,7 +4194,7 @@ J.pickAudioCodec = async (sr, chn) => {
 async function resample(buffer, sr, duration) {
   // Always upmix to 2 channels (stereo) for reliable encoder compatibility
   const chn = 2;
-  const len = Math.ceil(duration * sr);
+  const len = Math.max(1024, Math.ceil(Math.max(1, duration || 1) * sr));
   const oc = new OfflineAudioContext(chn, len, sr);
   const src = oc.createBufferSource(); src.buffer = buffer; src.connect(oc.destination); src.start(0);
   return oc.startRendering();
@@ -4263,57 +4263,72 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
   try { venc.close(); } catch (e) {}
   if (err) throw err;
 
+  let audioIncluded = false;
+  let audioNotice = '';
   if (ac) {
     onProgress && onProgress(0.97, '音声をエンコード中…');
-    const rs = await resample(audio.buffer, ac.sr, plan.duration);
-    const chn = 2;
-    let aerr = null;
-    const aenc = new AudioEncoder({
-      output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
-      error: e => { console.error('AudioEncoder error:', e); aerr = e; }
-    });
-    aenc.configure({ codec: ac.codec, sampleRate: ac.sr, numberOfChannels: chn, bitrate: 128000 });
-    // Opus uses 960 sample frames (20ms at 48kHz); AAC uses 1024 sample frames
-    const frameUnit = ac.mux === 'opus' ? 960 : 1024;
-    const block = frameUnit * 4;
-    const frames = rs.length;
-    for (let off = 0; off < frames; off += block) {
-      if (aerr) throw aerr;
-      const n = Math.min(block, frames - off);
-      const padFrames = (n % frameUnit === 0) ? n : Math.ceil(n / frameUnit) * frameUnit;
-      const data = new Float32Array(padFrames * chn);
-      for (let c = 0; c < chn; c++) {
-        data.set(rs.getChannelData(c).subarray(off, off + n), c * padFrames);
-      }
-      const ad = new AudioData({
-        format: 'f32-planar',
-        sampleRate: ac.sr,
-        numberOfFrames: padFrames,
-        numberOfChannels: chn,
-        timestamp: Math.round(off * 1e6 / ac.sr),
-        data
+    try {
+      const rs = await resample(audio.buffer, ac.sr, plan.duration);
+      const chn = 2;
+      let aerr = null;
+      const aenc = new AudioEncoder({
+        output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
+        error: e => { console.error('AudioEncoder error:', e); aerr = e; }
       });
-      aenc.encode(ad);
-      ad.close();
-      while (aenc.encodeQueueSize > 8) {
+      aenc.configure({ codec: ac.codec, sampleRate: ac.sr, numberOfChannels: chn, bitrate: 128000 });
+      // Opus uses 960 sample frames (20ms at 48kHz); AAC uses 1024 sample frames
+      const frameUnit = ac.mux === 'opus' ? 960 : 1024;
+      const block = frameUnit * 4;
+      const frames = rs.length;
+      for (let off = 0; off < frames; off += block) {
         if (aerr) throw aerr;
-        await new Promise(r => setTimeout(r, 4));
+        const n = Math.min(block, frames - off);
+        const padFrames = (n % frameUnit === 0) ? n : Math.ceil(n / frameUnit) * frameUnit;
+        const data = new Float32Array(padFrames * chn);
+        for (let c = 0; c < chn; c++) {
+          data.set(rs.getChannelData(c).subarray(off, off + n), c * padFrames);
+        }
+        const ad = new AudioData({
+          format: 'f32-planar',
+          sampleRate: ac.sr,
+          numberOfFrames: padFrames,
+          numberOfChannels: chn,
+          timestamp: Math.round(off * 1e6 / ac.sr),
+          data
+        });
+        aenc.encode(ad);
+        ad.close();
+        while (aenc.encodeQueueSize > 8) {
+          if (aerr) throw aerr;
+          await new Promise(r => setTimeout(r, 4));
+        }
       }
-    }
-    while (aenc.encodeQueueSize > 0) {
+      while (aenc.encodeQueueSize > 0) {
+        if (aerr) throw aerr;
+        await new Promise(r => setTimeout(r, 10));
+      }
+      const flushPromise = aenc.flush();
+      const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Audio flush timeout')), 25000));
+      await Promise.race([flushPromise, timeoutPromise]);
+      try { aenc.close(); } catch (e) {}
       if (aerr) throw aerr;
-      await new Promise(r => setTimeout(r, 10));
+      audioIncluded = true;
+    } catch (audioErr) {
+      console.warn('Audio encoding failed, continuing video-only export:', audioErr);
+      audioNotice = '（音声エンコードで問題が発生したため映像のみ保存しました）';
     }
-    const flushPromise = aenc.flush();
-    const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Audio flush timeout')), 5000));
-    await Promise.race([flushPromise, timeoutPromise]);
-    try { aenc.close(); } catch (e) {}
-    if (aerr) throw aerr;
   }
   onProgress && onProgress(0.99, 'MP4コンテナを出力中…');
   muxer.finalize();
   onProgress && onProgress(1, '完了');
-  return { blob: new Blob([target.buffer], { type: 'video/mp4' }), codec: vc.label, audio: ac ? ac.mux : null, width: w, height: h };
+  return {
+    blob: new Blob([target.buffer], { type: 'video/mp4' }),
+    codec: vc.label,
+    audio: audioIncluded ? ac.mux : null,
+    notice: audioNotice,
+    width: w,
+    height: h
+  };
 };
 
 /* ---------- PNG sequence as ZIP (store, no compression) ---------- */
@@ -29540,7 +29555,12 @@ async function runExport(kind) {
   const boxes = [...document.querySelectorAll('.exp-box')];
   const setText = m => boxes.forEach(b => { b.querySelector('.exp-text').textContent = m; });
   const txt = { set textContent(m) { setText(m); }, get textContent() { return boxes[0].querySelector('.exp-text').textContent; } };
-  boxes.forEach(b => { b.hidden = false; b.querySelector('.exp-bar').style.width = '0%'; });
+  boxes.forEach(b => {
+    b.hidden = false;
+    b.querySelector('.exp-bar').style.width = '0%';
+    const d = b.querySelector('.exp-done-area');
+    if (d) d.style.display = 'none';
+  });
   setText('準備中…');
   EXP_BTNS.forEach(id => { $(id).disabled = true; });
   const onProgress = (p, m) => { boxes.forEach(b => { b.querySelector('.exp-bar').style.width = (p * 100).toFixed(1) + '%'; }); setText(m); };
@@ -29549,8 +29569,41 @@ async function runExport(kind) {
     await J.ensureFonts(S.project.lyrics + (S.project.title || '') + (S.project.artist || '') + HUD_CHARS, J.fontsOfPlan(S.plan));
     if (kind === 'mp4') {
       const r = await J.exportMP4({ plan: S.plan, project: S.project, audio: S.project.includeAudio !== false ? S.audio : null, quality: S.project.quality || 'high', onProgress, signal: ac.signal });
-      txt.textContent = `完成 ${(r.blob.size / 1048576).toFixed(1)}MB・${r.codec}${r.audio ? ' + ' + r.audio.toUpperCase() : ''}・${((performance.now() - t0) / 1000).toFixed(0)}秒`;
-      const res = await J.saveFile(baseName() + '.mp4', r.blob);
+      const sizeMB = (r.blob.size / 1048576).toFixed(1);
+      const elapsed = ((performance.now() - t0) / 1000).toFixed(0);
+      txt.textContent = `完成 ${sizeMB}MB・${r.codec}${r.audio ? ' + ' + r.audio.toUpperCase() : ''}・${elapsed}秒`;
+      
+      const fileName = baseName() + '.mp4';
+      const blobUrl = URL.createObjectURL(r.blob);
+      
+      boxes.forEach(b => {
+        let doneArea = b.querySelector('.exp-done-area');
+        if (!doneArea) {
+          doneArea = document.createElement('div');
+          doneArea.className = 'exp-done-area';
+          b.appendChild(doneArea);
+        }
+        doneArea.style.display = 'block';
+        doneArea.innerHTML = `
+          <div style="background:linear-gradient(135deg,#065f46,#047857); color:#fff; border-radius:8px; padding:14px; margin-top:10px; box-shadow:0 4px 14px rgba(4,120,87,0.35); text-align:left;">
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+              <div>
+                <div style="font-weight:700; font-size:14px;">🎉 MP4動画が完成しました！ (${sizeMB}MB)</div>
+                <div style="font-size:11px; color:#a7f3d0; margin-top:2px;">自動保存されない場合は下のボタンを押してください</div>
+                ${r.notice ? `<div style="font-size:11px; color:#fde68a; margin-top:4px; font-weight:600;">⚠️ ${r.notice}</div>` : ''}
+              </div>
+              <a href="${blobUrl}" download="${fileName}" style="display:inline-flex; align-items:center; gap:6px; background:#fff; color:#065f46; font-weight:800; font-size:13px; padding:8px 18px; border-radius:6px; text-decoration:none; box-shadow:0 2px 6px rgba(0,0,0,0.2);">
+                📥 今すぐ保存 (${sizeMB}MB)
+              </a>
+            </div>
+            <div style="margin-top:10px;">
+              <video controls src="${blobUrl}" style="width:100%; max-height:220px; border-radius:6px; background:#000;"></video>
+            </div>
+          </div>
+        `;
+      });
+
+      const res = await J.saveFile(fileName, r.blob);
       if (res === 'declined') txt.textContent += '（保存はキャンセルされました）';
     } else {
       const blob = await J.exportPNGZip({ plan: S.plan, project: S.project, transparent: kind === 'pnga', layers: kind === 'pngl', onProgress, signal: ac.signal });
@@ -29558,8 +29611,37 @@ async function runExport(kind) {
       await J.saveFile(baseName() + (kind === 'pnga' ? '_alpha' : kind === 'pngl' ? '_layers' : '') + '_png.zip', blob);
     }
   } catch (e) {
-    txt.textContent = 'エラー: ' + (e && e.message ? e.message : e);
+    const errMsg = (e && e.message ? e.message : String(e));
+    txt.textContent = 'エラー: ' + errMsg;
     console.error(e);
+    boxes.forEach(b => {
+      let doneArea = b.querySelector('.exp-done-area');
+      if (!doneArea) {
+        doneArea = document.createElement('div');
+        doneArea.className = 'exp-done-area';
+        b.appendChild(doneArea);
+      }
+      doneArea.style.display = 'block';
+      doneArea.innerHTML = `
+        <div style="background:#450a0a; border:1px solid #b91c1c; color:#fecaca; border-radius:8px; padding:14px; margin-top:10px; text-align:left;">
+          <div style="font-weight:700; font-size:13px; color:#f87171;">⚠️ 出力エラーが発生しました</div>
+          <div style="font-size:12px; margin-top:4px; font-family:monospace; word-break:break-all; background:rgba(0,0,0,0.3); padding:6px; border-radius:4px;">${errMsg}</div>
+          <div style="margin-top:10px; display:flex; gap:8px;">
+            <button class="btn-retry-no-audio" style="background:#dc2626; color:#fff; border:none; padding:8px 14px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer;">
+              🔇 音声なしで書き出してみる
+            </button>
+          </div>
+        </div>
+      `;
+      const retryBtn = doneArea.querySelector('.btn-retry-no-audio');
+      if (retryBtn) {
+        retryBtn.onclick = () => {
+          S.project.includeAudio = false;
+          doneArea.style.display = 'none';
+          runExport('mp4');
+        };
+      }
+    });
   } finally {
     S.exporting = null; S.need = true;
     EXP_BTNS.forEach(id => { $(id).disabled = false; });

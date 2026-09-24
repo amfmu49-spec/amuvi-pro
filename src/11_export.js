@@ -44,8 +44,8 @@ J.pickVideoCodec = async (w, h, fps, bitrate, preferSoftware = false) => {
 };
 J.pickAudioCodec = async (sr, chn) => {
   if (typeof AudioEncoder === 'undefined') return null;
-  // Prioritize opus first because Chromium on Windows has a known bug where mp4a.40.2 (AAC) flush() hangs or throws EncodingError
-  for (const c of [{ codec: 'opus', mux: 'opus', sr: 48000 }, { codec: 'mp4a.40.2', mux: 'aac', sr: 48000 }]) {
+  // Prioritize AAC (mp4a.40.2) for universal MP4 player compatibility, Opus as fallback
+  for (const c of [{ codec: 'mp4a.40.2', mux: 'aac', sr: 48000 }, { codec: 'opus', mux: 'opus', sr: 48000 }]) {
     try { const s = await AudioEncoder.isConfigSupported({ codec: c.codec, sampleRate: c.sr, numberOfChannels: 2, bitrate: 128000 }); if (s.supported) return c; } catch (e) {}
   }
   return null;
@@ -54,7 +54,7 @@ J.pickAudioCodec = async (sr, chn) => {
 async function resample(buffer, sr, duration) {
   // Always upmix to 2 channels (stereo) for reliable encoder compatibility
   const chn = 2;
-  const len = Math.ceil(duration * sr);
+  const len = Math.max(1024, Math.ceil(Math.max(1, duration || 1) * sr));
   const oc = new OfflineAudioContext(chn, len, sr);
   const src = oc.createBufferSource(); src.buffer = buffer; src.connect(oc.destination); src.start(0);
   return oc.startRendering();
@@ -123,57 +123,72 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
   try { venc.close(); } catch (e) {}
   if (err) throw err;
 
+  let audioIncluded = false;
+  let audioNotice = '';
   if (ac) {
     onProgress && onProgress(0.97, '音声をエンコード中…');
-    const rs = await resample(audio.buffer, ac.sr, plan.duration);
-    const chn = 2;
-    let aerr = null;
-    const aenc = new AudioEncoder({
-      output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
-      error: e => { console.error('AudioEncoder error:', e); aerr = e; }
-    });
-    aenc.configure({ codec: ac.codec, sampleRate: ac.sr, numberOfChannels: chn, bitrate: 128000 });
-    // Opus uses 960 sample frames (20ms at 48kHz); AAC uses 1024 sample frames
-    const frameUnit = ac.mux === 'opus' ? 960 : 1024;
-    const block = frameUnit * 4;
-    const frames = rs.length;
-    for (let off = 0; off < frames; off += block) {
-      if (aerr) throw aerr;
-      const n = Math.min(block, frames - off);
-      const padFrames = (n % frameUnit === 0) ? n : Math.ceil(n / frameUnit) * frameUnit;
-      const data = new Float32Array(padFrames * chn);
-      for (let c = 0; c < chn; c++) {
-        data.set(rs.getChannelData(c).subarray(off, off + n), c * padFrames);
-      }
-      const ad = new AudioData({
-        format: 'f32-planar',
-        sampleRate: ac.sr,
-        numberOfFrames: padFrames,
-        numberOfChannels: chn,
-        timestamp: Math.round(off * 1e6 / ac.sr),
-        data
+    try {
+      const rs = await resample(audio.buffer, ac.sr, plan.duration);
+      const chn = 2;
+      let aerr = null;
+      const aenc = new AudioEncoder({
+        output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
+        error: e => { console.error('AudioEncoder error:', e); aerr = e; }
       });
-      aenc.encode(ad);
-      ad.close();
-      while (aenc.encodeQueueSize > 8) {
+      aenc.configure({ codec: ac.codec, sampleRate: ac.sr, numberOfChannels: chn, bitrate: 128000 });
+      // Opus uses 960 sample frames (20ms at 48kHz); AAC uses 1024 sample frames
+      const frameUnit = ac.mux === 'opus' ? 960 : 1024;
+      const block = frameUnit * 4;
+      const frames = rs.length;
+      for (let off = 0; off < frames; off += block) {
         if (aerr) throw aerr;
-        await new Promise(r => setTimeout(r, 4));
+        const n = Math.min(block, frames - off);
+        const padFrames = (n % frameUnit === 0) ? n : Math.ceil(n / frameUnit) * frameUnit;
+        const data = new Float32Array(padFrames * chn);
+        for (let c = 0; c < chn; c++) {
+          data.set(rs.getChannelData(c).subarray(off, off + n), c * padFrames);
+        }
+        const ad = new AudioData({
+          format: 'f32-planar',
+          sampleRate: ac.sr,
+          numberOfFrames: padFrames,
+          numberOfChannels: chn,
+          timestamp: Math.round(off * 1e6 / ac.sr),
+          data
+        });
+        aenc.encode(ad);
+        ad.close();
+        while (aenc.encodeQueueSize > 8) {
+          if (aerr) throw aerr;
+          await new Promise(r => setTimeout(r, 4));
+        }
       }
-    }
-    while (aenc.encodeQueueSize > 0) {
+      while (aenc.encodeQueueSize > 0) {
+        if (aerr) throw aerr;
+        await new Promise(r => setTimeout(r, 10));
+      }
+      const flushPromise = aenc.flush();
+      const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Audio flush timeout')), 25000));
+      await Promise.race([flushPromise, timeoutPromise]);
+      try { aenc.close(); } catch (e) {}
       if (aerr) throw aerr;
-      await new Promise(r => setTimeout(r, 10));
+      audioIncluded = true;
+    } catch (audioErr) {
+      console.warn('Audio encoding failed, continuing video-only export:', audioErr);
+      audioNotice = '（音声エンコードで問題が発生したため映像のみ保存しました）';
     }
-    const flushPromise = aenc.flush();
-    const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Audio flush timeout')), 5000));
-    await Promise.race([flushPromise, timeoutPromise]);
-    try { aenc.close(); } catch (e) {}
-    if (aerr) throw aerr;
   }
   onProgress && onProgress(0.99, 'MP4コンテナを出力中…');
   muxer.finalize();
   onProgress && onProgress(1, '完了');
-  return { blob: new Blob([target.buffer], { type: 'video/mp4' }), codec: vc.label, audio: ac ? ac.mux : null, width: w, height: h };
+  return {
+    blob: new Blob([target.buffer], { type: 'video/mp4' }),
+    codec: vc.label,
+    audio: audioIncluded ? ac.mux : null,
+    notice: audioNotice,
+    width: w,
+    height: h
+  };
 };
 
 /* ---------- PNG sequence as ZIP (store, no compression) ---------- */
