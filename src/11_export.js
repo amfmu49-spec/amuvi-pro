@@ -25,7 +25,7 @@ J.saveFile = async (filename, data) => {
 };
 
 /* ---------- codec negotiation ---------- */
-J.pickVideoCodec = async (w, h, fps, bitrate) => {
+J.pickVideoCodec = async (w, h, fps, bitrate, preferSoftware = false) => {
   if (typeof VideoEncoder === 'undefined') return null;
   const cands = [
     { codec: 'avc1.640033', mux: 'avc', label: 'H.264 High' },
@@ -36,8 +36,9 @@ J.pickVideoCodec = async (w, h, fps, bitrate) => {
   ];
   for (const c of cands) {
     const cfg = { codec: c.codec, width: w, height: h, bitrate, framerate: fps };
+    if (preferSoftware) cfg.hardwareAcceleration = 'prefer-software';
     if (c.mux === 'avc') cfg.avc = { format: 'avc' };
-    try { const s = await VideoEncoder.isConfigSupported(cfg); if (s.supported) return Object.assign({}, c, { cfg }); } catch (e) {}
+    try { const s = await VideoEncoder.isConfigSupported(cfg); if (s.supported) return Object.assign({}, c, { cfg: s.config || cfg }); } catch (e) {}
   }
   return null;
 };
@@ -72,8 +73,15 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
   if (ac) muxOpts.audio = { codec: ac.mux, numberOfChannels: Math.min(2, audio.buffer.numberOfChannels), sampleRate: ac.sr };
   const muxer = new Mp4Muxer.Muxer(muxOpts);
   let err = null;
-  const venc = new VideoEncoder({ output: (chunk, meta) => muxer.addVideoChunk(chunk, meta), error: e => { err = e; } });
-  venc.configure(Object.assign({}, vc.cfg, { latencyMode: 'quality' }));
+  const venc = new VideoEncoder({
+    output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+    error: e => { console.error('VideoEncoder error:', e); err = e; }
+  });
+  // Do not force latencyMode: 'quality' as it causes Windows Media Foundation encoders to fail on flush
+  const vencCfg = Object.assign({}, vc.cfg);
+  delete vencCfg.latencyMode;
+  venc.configure(vencCfg);
+
   const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext('2d', { alpha: false });
   const R = new J.Renderer();
@@ -81,36 +89,88 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
   const scale = w / plan.W;
   const prevRes = J.glyphs.maxRes; J.glyphs.maxRes = h >= 1000 ? 768 : 512;
   try {
-  for (let i = 0; i < total; i++) {
-    if (signal && signal.aborted) { try { venc.close(); } catch (e) {} throw new Error('キャンセルしました'); }
-    if (err) throw err;
-    R.frame(ctx, plan, i / fps, { scale });
-    const vf = new VideoFrame(canvas, { timestamp: Math.round(i * 1e6 / fps), duration: Math.round(1e6 / fps) });
-    venc.encode(vf, { keyFrame: i % (fps * 2) === 0 });
-    vf.close();
-    while (venc.encodeQueueSize > 4) await new Promise(r => setTimeout(r, 2));
-    if (i % 3 === 0) { onProgress && onProgress(i / total, `フレーム ${i + 1}/${total}`); await new Promise(r => setTimeout(r, 0)); }
-  }
-  } finally { J.glyphs.maxRes = prevRes; }
-  await venc.flush(); venc.close();
-  if (ac) {
-    onProgress && onProgress(0.99, '音声をエンコード中');
-    const rs = await resample(audio.buffer, ac.sr, plan.duration);
-    const chn = rs.numberOfChannels;
-    const aenc = new AudioEncoder({ output: (chunk, meta) => muxer.addAudioChunk(chunk, meta), error: e => { err = e; } });
-    aenc.configure({ codec: ac.codec, sampleRate: ac.sr, numberOfChannels: chn, bitrate: 192000 });
-    const frames = rs.length, block = 4800;
-    for (let off = 0; off < frames; off += block) {
-      const n = Math.min(block, frames - off);
-      const data = new Float32Array(n * chn);
-      for (let c = 0; c < chn; c++) data.set(rs.getChannelData(c).subarray(off, off + n), c * n);
-      const ad = new AudioData({ format: 'f32-planar', sampleRate: ac.sr, numberOfFrames: n, numberOfChannels: chn, timestamp: Math.round(off * 1e6 / ac.sr), data });
-      aenc.encode(ad); ad.close();
-      if (aenc.encodeQueueSize > 16) await new Promise(r => setTimeout(r, 1));
+    for (let i = 0; i < total; i++) {
+      if (signal && signal.aborted) { try { venc.close(); } catch (e) {} throw new Error('キャンセルしました'); }
+      if (err) throw err;
+      R.frame(ctx, plan, i / fps, { scale });
+      const vf = new VideoFrame(canvas, { timestamp: Math.round(i * 1e6 / fps), duration: Math.round(1e6 / fps) });
+      venc.encode(vf, { keyFrame: i % (fps * 2) === 0 });
+      vf.close();
+      while (venc.encodeQueueSize > 6) {
+        if (err) throw err;
+        await new Promise(r => setTimeout(r, 4));
+      }
+      if (i % 3 === 0 || i === total - 1) {
+        onProgress && onProgress((i + 1) / total * 0.95, `映像フレーム ${i + 1}/${total}`);
+        await new Promise(r => setTimeout(r, 0));
+      }
     }
-    await aenc.flush(); aenc.close();
+  } finally { J.glyphs.maxRes = prevRes; }
+
+  onProgress && onProgress(0.96, '映像を完了処理中…');
+  while (venc.encodeQueueSize > 0) {
     if (err) throw err;
+    await new Promise(r => setTimeout(r, 15));
   }
+  try {
+    await venc.flush();
+  } catch (flushErr) {
+    console.error('venc.flush() error:', flushErr);
+    if (!err) err = flushErr;
+  }
+  try { venc.close(); } catch (e) {}
+  if (err) throw err;
+
+  if (ac) {
+    onProgress && onProgress(0.97, '音声をエンコード中…');
+    try {
+      const rs = await resample(audio.buffer, ac.sr, plan.duration);
+      const chn = rs.numberOfChannels;
+      let aerr = null;
+      const aenc = new AudioEncoder({
+        output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
+        error: e => { console.error('AudioEncoder error:', e); aerr = e; }
+      });
+      aenc.configure({ codec: ac.codec, sampleRate: ac.sr, numberOfChannels: chn, bitrate: 192000 });
+      // AAC requires 1024 sample frame alignment. Use 4096 (4 * 1024) sample blocks.
+      const block = 4096;
+      const frames = rs.length;
+      for (let off = 0; off < frames; off += block) {
+        if (aerr) throw aerr;
+        const n = Math.min(block, frames - off);
+        // Pad with silence to multiple of 1024 if last block to prevent encoder flush errors
+        const padFrames = (n % 1024 === 0) ? n : Math.ceil(n / 1024) * 1024;
+        const data = new Float32Array(padFrames * chn);
+        for (let c = 0; c < chn; c++) {
+          data.set(rs.getChannelData(c).subarray(off, off + n), c * padFrames);
+        }
+        const ad = new AudioData({
+          format: 'f32-planar',
+          sampleRate: ac.sr,
+          numberOfFrames: padFrames,
+          numberOfChannels: chn,
+          timestamp: Math.round(off * 1e6 / ac.sr),
+          data
+        });
+        aenc.encode(ad);
+        ad.close();
+        while (aenc.encodeQueueSize > 8) {
+          if (aerr) throw aerr;
+          await new Promise(r => setTimeout(r, 4));
+        }
+      }
+      while (aenc.encodeQueueSize > 0) {
+        if (aerr) throw aerr;
+        await new Promise(r => setTimeout(r, 15));
+      }
+      await aenc.flush();
+      try { aenc.close(); } catch (e) {}
+      if (aerr) throw aerr;
+    } catch (audioErr) {
+      console.warn('Audio encode failed; saving video without audio:', audioErr);
+    }
+  }
+  onProgress && onProgress(0.99, 'MP4コンテナを出力中…');
   muxer.finalize();
   onProgress && onProgress(1, '完了');
   return { blob: new Blob([target.buffer], { type: 'video/mp4' }), codec: vc.label, audio: ac ? ac.mux : null, width: w, height: h };

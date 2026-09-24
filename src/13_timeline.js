@@ -265,6 +265,17 @@
     // initial render
     if (srtEl.value.trim()) onSrtChange();
 
+    const track = document.getElementById('amuviTimelineTrack');
+    if (track) {
+      track.addEventListener('pointerdown', e => {
+        if (e.target.closest('.amuvi-tl-block')) return;
+        const rect = track.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const t = Math.max(0, clickX / PX_PER_SEC);
+        if (window._seek) window._seek(t);
+      });
+    }
+
     // playhead + active block highlight
     const outer = document.getElementById('amuviDragTimeline');
     let lastActiveIdx = -1;
