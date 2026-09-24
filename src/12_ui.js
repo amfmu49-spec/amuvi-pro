@@ -156,7 +156,8 @@ function sizeViewport() {
 function draw() {
   const c = $('view'), ctx = c.getContext('2d');
   const t0 = performance.now();
-  S.renderer.frame(ctx, S.plan, S.t, { scale: c.width / S.plan.W, fast: S.playing && S.slow });
+  const hasBg = !!S.bgImageUrl;
+  S.renderer.frame(ctx, S.plan, S.t, { scale: c.width / S.plan.W, fast: S.playing && S.slow, transparent: hasBg });
   const dt = performance.now() - t0;
   S.slow = S.playing ? (dt > 30 ? true : dt < 14 ? false : S.slow) : false;
   updateTimeUI(); drawTimeline(); updateCutInfo();
@@ -675,7 +676,46 @@ function bind() {
   $('lineScale').addEventListener('change', e => { S.project.timing.lineScale = J.clamp(parseFloat(e.target.value) || 1, 0.3, 4); replan(); });
   $('snap').addEventListener('change', e => { S.project.timing.snap = e.target.checked; replan(); });
   $('btnResetTimes').addEventListener('click', () => { S.project.timing.lineTimes = {}; replan(); });
+  S.bgImageUrl = null;
+  $('bgImageFile')?.addEventListener('change', e => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const url = URL.createObjectURL(f);
+    S.bgImageUrl = url;
+    const layer = document.getElementById('bgImageLayer');
+    if (layer) layer.style.backgroundImage = `url('${url}')`;
+    const bar = document.getElementById('bgImageBar');
+    const nameEl = document.getElementById('bgImageName');
+    if (bar) bar.style.display = 'flex';
+    if (nameEl) nameEl.textContent = f.name;
+    S.need = true;
+  });
+  document.getElementById('btnClearBg')?.addEventListener('click', () => {
+    S.bgImageUrl = null;
+    const layer = document.getElementById('bgImageLayer');
+    if (layer) layer.style.backgroundImage = '';
+    const bar = document.getElementById('bgImageBar');
+    if (bar) bar.style.display = 'none';
+    const fi = document.getElementById('bgImageFile');
+    if (fi) fi.value = '';
+    S.need = true;
+  });
   $('audioFile').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; if (f) loadAudioFile(f); });
+
+  $('srtFile')?.addEventListener('change', e => {
+    const f = e.target.files && e.target.files[0];
+    if (f) {
+      const reader = new FileReader();
+      reader.onload = e => {
+        if (document.getElementById('srtLyrics')) {
+            document.getElementById('srtLyrics').value = e.target.result;
+            document.getElementById('srtLyrics').dispatchEvent(new Event('input'));
+        }
+      };
+      reader.readAsText(f);
+    }
+  });
+
   $('btnTap').addEventListener('click', () => (S.tap ? stopTap() : startTap()));
   $('tapBtn').addEventListener('click', tapNow);
   $('tapStop').addEventListener('click', () => { pause(); stopTap(); });
