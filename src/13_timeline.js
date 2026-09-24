@@ -84,8 +84,9 @@
     const outer = document.getElementById('amuviDragTimeline');
     if (!track || !outer) return;
 
-    const totalSec = blocks.length > 0 ? Math.max(...blocks.map(b => b.end)) + 10 : 60;
-    const totalW   = Math.max(outer.clientWidth - 4, totalSec * PX_PER_SEC + 120);
+    const totalSec  = blocks.length > 0 ? Math.max(...blocks.map(b => b.end)) + 10 : 60;
+    const centerPad = outer.clientWidth ? Math.round(outer.clientWidth / 2) : 500;
+    const totalW    = Math.max(outer.clientWidth - 4, Math.round(totalSec * PX_PER_SEC) + centerPad + 120);
     track.style.width = totalW + 'px';
 
     // clear old content (keep playhead)
@@ -191,7 +192,13 @@
           b.start = ns; b.end = b.end + diff; b.dur = b.end - b.start;
           updateSrt(currentBlocks);
         } else {
-          if (window._seek) window._seek(b.start);
+          if (window._seek) {
+            window._seek(b.start);
+            const x = b.start * PX_PER_SEC;
+            const centerX = outer.clientWidth / 2;
+            if (x > centerX) outer.scrollLeft = Math.round(x - centerX);
+            else outer.scrollLeft = 0;
+          }
         }
       });
 
@@ -265,19 +272,22 @@
     // initial render
     if (srtEl.value.trim()) onSrtChange();
 
+    const outer = document.getElementById('amuviDragTimeline');
     const track = document.getElementById('amuviTimelineTrack');
-    if (track) {
+    if (track && outer) {
       track.addEventListener('pointerdown', e => {
         if (e.target.closest('.amuvi-tl-block')) return;
         const rect = track.getBoundingClientRect();
         const clickX = e.clientX - rect.left;
         const t = Math.max(0, clickX / PX_PER_SEC);
         if (window._seek) window._seek(t);
+        const centerX = outer.clientWidth / 2;
+        if (clickX > centerX) outer.scrollLeft = Math.round(clickX - centerX);
+        else outer.scrollLeft = 0;
       });
     }
 
     // playhead + active block highlight
-    const outer = document.getElementById('amuviDragTimeline');
     let lastActiveIdx = -1;
     (function raf() {
       const S = window._S;
@@ -287,17 +297,22 @@
         const x = t * PX_PER_SEC;
         ph.style.left = x + 'px';
 
-        // auto-scroll to follow playhead during playback
+        // Center-playhead scrolling:
+        // When playhead reaches the center of the timeline view,
+        // pin the playhead to the center and scroll the background track
         if (S.playing) {
-          const vl = outer.scrollLeft, vr = vl + outer.clientWidth;
-          if (x > vr - 60 || x < vl) outer.scrollLeft = x - 80;
+          const centerX = outer.clientWidth / 2;
+          if (x > centerX) {
+            outer.scrollLeft = Math.round(x - centerX);
+          } else {
+            outer.scrollLeft = 0;
+          }
         }
 
         // highlight the currently playing block
         const activeIdx = currentBlocks.findIndex(b => t >= b.start && t < b.end);
         if (activeIdx !== lastActiveIdx) {
           lastActiveIdx = activeIdx;
-          const track = document.getElementById('amuviTimelineTrack');
           if (track) {
             track.querySelectorAll('.amuvi-tl-block').forEach((el, i) => {
               if (i === activeIdx) {
