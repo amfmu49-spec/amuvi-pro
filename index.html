@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>AMUVI PRO v2.2 (JIZURA)</title>
+<title>AMUVI PRO v2.3 (JIZURA)</title>
 <meta name="description" content="歌詞を入れると文字PV（リリックモーション）を自動で組み立てて MP4 に書き出すブラウザアプリ">
 <link rel="canonical" href="https://852wa.github.io/JIZURA/">
 <link rel="alternate" hreflang="ja" href="https://852wa.github.io/JIZURA/">
 <link rel="alternate" hreflang="en" href="https://852wa.github.io/JIZURA/en/">
 <meta property="og:type" content="website">
-<meta property="og:title" content="AMUVI PRO v2.2 (JIZURA)">
+<meta property="og:title" content="AMUVI PRO v2.3 (JIZURA)">
 <meta property="og:description" content="歌詞を入れると文字PV（リリックモーション）を自動で組み立てて MP4 に書き出すブラウザアプリ">
 <meta property="og:url" content="https://852wa.github.io/JIZURA/">
 <meta name="twitter:card" content="summary">
@@ -290,7 +290,7 @@ body {
   <header class="bar amuvi-header">
     <div class="brand">
       <span class="word amuvi-title">AMUVI PRO</span>
-      <span class="amuvi-version" style="font-size:11px; font-weight:700; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; border-radius:10px; padding:2px 8px; margin-left:8px; vertical-align:middle; letter-spacing:0.5px; box-shadow:0 2px 6px rgba(99,102,241,0.3);">v2.2</span>
+      <span class="amuvi-version" style="font-size:11px; font-weight:700; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; border-radius:10px; padding:2px 8px; margin-left:8px; vertical-align:middle; letter-spacing:0.5px; box-shadow:0 2px 6px rgba(99,102,241,0.3);">v2.3</span>
     </div>
     <div class="proj" style="display:none;">
       <input id="songTitle" type="text" placeholder="曲名">
@@ -342,7 +342,7 @@ body {
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
             <div style="display:flex; align-items:center; gap:8px;">
               <h3 class="amuvi-h2" style="font-size:16px; margin:0;">⏱ タイムライン</h3>
-              <span style="font-size:10px; font-weight:600; color:#cbd5e1; background:#334155; padding:2px 6px; border-radius:4px; border:1px solid #475569;">v2.2 センター追従</span>
+              <span style="font-size:10px; font-weight:600; color:#cbd5e1; background:#334155; padding:2px 6px; border-radius:4px; border:1px solid #475569;">v2.3 音声安定化</span>
             </div>
             <span style="font-size:11px; color:#94a3b8;">← スクロール | ブロックを左右にドラッグ | クリックで移動</span>
           </div>
@@ -4184,14 +4184,16 @@ J.pickVideoCodec = async (w, h, fps, bitrate, preferSoftware = false) => {
 };
 J.pickAudioCodec = async (sr, chn) => {
   if (typeof AudioEncoder === 'undefined') return null;
-  for (const c of [{ codec: 'mp4a.40.2', mux: 'aac', sr: 48000 }, { codec: 'opus', mux: 'opus', sr: 48000 }]) {
-    try { const s = await AudioEncoder.isConfigSupported({ codec: c.codec, sampleRate: c.sr, numberOfChannels: chn, bitrate: 192000 }); if (s.supported) return c; } catch (e) {}
+  // Prioritize opus first because Chromium on Windows has a known bug where mp4a.40.2 (AAC) flush() hangs or throws EncodingError
+  for (const c of [{ codec: 'opus', mux: 'opus', sr: 48000 }, { codec: 'mp4a.40.2', mux: 'aac', sr: 48000 }]) {
+    try { const s = await AudioEncoder.isConfigSupported({ codec: c.codec, sampleRate: c.sr, numberOfChannels: 2, bitrate: 128000 }); if (s.supported) return c; } catch (e) {}
   }
   return null;
 };
 
 async function resample(buffer, sr, duration) {
-  const chn = Math.min(2, buffer.numberOfChannels);
+  // Always upmix to 2 channels (stereo) for reliable encoder compatibility
+  const chn = 2;
   const len = Math.ceil(duration * sr);
   const oc = new OfflineAudioContext(chn, len, sr);
   const src = oc.createBufferSource(); src.buffer = buffer; src.connect(oc.destination); src.start(0);
@@ -4210,7 +4212,7 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
   if (audio && audio.buffer && project.includeAudio !== false) ac = await J.pickAudioCodec(48000, Math.min(2, audio.buffer.numberOfChannels));
   const target = new Mp4Muxer.ArrayBufferTarget();
   const muxOpts = { target, video: { codec: vc.mux, width: w, height: h, frameRate: fps }, fastStart: 'in-memory', firstTimestampBehavior: 'offset' };
-  if (ac) muxOpts.audio = { codec: ac.mux, numberOfChannels: Math.min(2, audio.buffer.numberOfChannels), sampleRate: ac.sr };
+  if (ac) muxOpts.audio = { codec: ac.mux, numberOfChannels: 2, sampleRate: ac.sr };
   const muxer = new Mp4Muxer.Muxer(muxOpts);
   let err = null;
   const venc = new VideoEncoder({
@@ -4263,52 +4265,50 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
 
   if (ac) {
     onProgress && onProgress(0.97, '音声をエンコード中…');
-    try {
-      const rs = await resample(audio.buffer, ac.sr, plan.duration);
-      const chn = rs.numberOfChannels;
-      let aerr = null;
-      const aenc = new AudioEncoder({
-        output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
-        error: e => { console.error('AudioEncoder error:', e); aerr = e; }
-      });
-      aenc.configure({ codec: ac.codec, sampleRate: ac.sr, numberOfChannels: chn, bitrate: 192000 });
-      // AAC requires 1024 sample frame alignment. Use 4096 (4 * 1024) sample blocks.
-      const block = 4096;
-      const frames = rs.length;
-      for (let off = 0; off < frames; off += block) {
-        if (aerr) throw aerr;
-        const n = Math.min(block, frames - off);
-        // Pad with silence to multiple of 1024 if last block to prevent encoder flush errors
-        const padFrames = (n % 1024 === 0) ? n : Math.ceil(n / 1024) * 1024;
-        const data = new Float32Array(padFrames * chn);
-        for (let c = 0; c < chn; c++) {
-          data.set(rs.getChannelData(c).subarray(off, off + n), c * padFrames);
-        }
-        const ad = new AudioData({
-          format: 'f32-planar',
-          sampleRate: ac.sr,
-          numberOfFrames: padFrames,
-          numberOfChannels: chn,
-          timestamp: Math.round(off * 1e6 / ac.sr),
-          data
-        });
-        aenc.encode(ad);
-        ad.close();
-        while (aenc.encodeQueueSize > 8) {
-          if (aerr) throw aerr;
-          await new Promise(r => setTimeout(r, 4));
-        }
-      }
-      while (aenc.encodeQueueSize > 0) {
-        if (aerr) throw aerr;
-        await new Promise(r => setTimeout(r, 15));
-      }
-      await aenc.flush();
-      try { aenc.close(); } catch (e) {}
+    const rs = await resample(audio.buffer, ac.sr, plan.duration);
+    const chn = 2;
+    let aerr = null;
+    const aenc = new AudioEncoder({
+      output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
+      error: e => { console.error('AudioEncoder error:', e); aerr = e; }
+    });
+    aenc.configure({ codec: ac.codec, sampleRate: ac.sr, numberOfChannels: chn, bitrate: 128000 });
+    // Opus uses 960 sample frames (20ms at 48kHz); AAC uses 1024 sample frames
+    const frameUnit = ac.mux === 'opus' ? 960 : 1024;
+    const block = frameUnit * 4;
+    const frames = rs.length;
+    for (let off = 0; off < frames; off += block) {
       if (aerr) throw aerr;
-    } catch (audioErr) {
-      console.warn('Audio encode failed; saving video without audio:', audioErr);
+      const n = Math.min(block, frames - off);
+      const padFrames = (n % frameUnit === 0) ? n : Math.ceil(n / frameUnit) * frameUnit;
+      const data = new Float32Array(padFrames * chn);
+      for (let c = 0; c < chn; c++) {
+        data.set(rs.getChannelData(c).subarray(off, off + n), c * padFrames);
+      }
+      const ad = new AudioData({
+        format: 'f32-planar',
+        sampleRate: ac.sr,
+        numberOfFrames: padFrames,
+        numberOfChannels: chn,
+        timestamp: Math.round(off * 1e6 / ac.sr),
+        data
+      });
+      aenc.encode(ad);
+      ad.close();
+      while (aenc.encodeQueueSize > 8) {
+        if (aerr) throw aerr;
+        await new Promise(r => setTimeout(r, 4));
+      }
     }
+    while (aenc.encodeQueueSize > 0) {
+      if (aerr) throw aerr;
+      await new Promise(r => setTimeout(r, 10));
+    }
+    const flushPromise = aenc.flush();
+    const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Audio flush timeout')), 5000));
+    await Promise.race([flushPromise, timeoutPromise]);
+    try { aenc.close(); } catch (e) {}
+    if (aerr) throw aerr;
   }
   onProgress && onProgress(0.99, 'MP4コンテナを出力中…');
   muxer.finalize();
