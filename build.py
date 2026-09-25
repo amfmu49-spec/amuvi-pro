@@ -11,9 +11,9 @@ js = '\n'.join(read(f) for f in sources)
 mux = '/*! mp4-muxer v5.2.2 | MIT License | (c) 2023 Vanilagy | see THIRD_PARTY_NOTICES.md */\n' + read('vendor/mp4-muxer.min.js')
 def build(lang):
     english = lang == 'en'
-    title = 'LYRIMO v3.0.4— Lyric Motion Video Maker' if english else 'LYRIMO v3.0.4'
+    title = 'LYRIMO v3.0.5 — Lyric Motion Video Maker' if english else 'LYRIMO v3.0.5'
     description = ('Turn lyrics into animated lyric videos in your browser and export MP4.' if english else '歌詞を入れると文字PV（リリックモーション）を自動で組み立てて MP4 に書き出すブラウザアプリ')
-    canonical = 'https://852wa.github.io/JIZURA/en/' if english else 'https://852wa.github.io/JIZURA/'
+    canonical = 'https://amfmu49-spec.github.io/lyrimo/en/' if english else 'https://amfmu49-spec.github.io/lyrimo/'
     language_nav = ('<nav class="lang-switch" aria-label="Language"><a href="../index.html" lang="ja">日本語</a><span aria-current="page">English</span></nav>' if english else '<nav class="lang-switch" aria-label="言語"><span aria-current="page">日本語</span><a href="en/index.html" lang="en">English</a></nav>')
     body = read('app/body.html').replace('    <div class="acts">', '    ' + language_nav + '\n    <div class="acts">', 1)
     if english: body = localize_body(body)
@@ -30,8 +30,8 @@ def build(lang):
 <title>{title}</title>
 <meta name="description" content="{description}">
 <link rel="canonical" href="{canonical}">
-<link rel="alternate" hreflang="ja" href="https://852wa.github.io/JIZURA/">
-<link rel="alternate" hreflang="en" href="https://852wa.github.io/JIZURA/en/">
+<link rel="alternate" hreflang="ja" href="https://amfmu49-spec.github.io/lyrimo/">
+<link rel="alternate" hreflang="en" href="https://amfmu49-spec.github.io/lyrimo/en/">
 <meta property="og:type" content="website">
 <meta property="og:title" content="{title}">
 <meta property="og:description" content="{description}">
