@@ -587,6 +587,19 @@ function syncOut() {
   const kb = $('keyBadge');
   kb.hidden = k === 'off';
   if (k !== 'off') kb.innerHTML = `<i style="background:${J.KEY_BG[k]}"></i>${k === 'green' ? 'グリーンバック' : 'ブラックバック'}`;
+
+  const noteEl = $('eAudioNote');
+  if (noteEl) {
+    if (typeof AudioEncoder === 'undefined') {
+      noteEl.innerHTML = '<span style="color:#f59e0b; font-weight:700;">⚠️ お使いの端末（iOS Safari等）は音声出力非対応です</span><br><span style="color:#cbd5e1; font-size:11px;">Appleの仕様制限により本端末では【映像のみ】書き出されます。音声付きで動画を書き出すには、PC（Google ChromeまたはMicrosoft Edge）からご利用ください。</span>';
+    } else if (!S.audio || !S.audio.buffer) {
+      noteEl.innerHTML = '<span style="color:#f59e0b; font-weight:700;">⚠️ 楽曲が未設定です（無音出力モード）</span><br><span style="color:#cbd5e1; font-size:11px;">上の「🎵 曲を読み込む」から音楽ファイルを選択すると、動画に音声を結合できます。</span>';
+    } else if (!incA) {
+      noteEl.innerHTML = '<span style="color:#94a3b8; font-weight:700;">🔇 音声書き出し：OFF</span><br><span style="color:#94a3b8; font-size:11px;">チェックを入れると楽曲「' + (S.audio.name || '') + '」を結合します。</span>';
+    } else {
+      noteEl.innerHTML = '<span style="color:#10b981; font-weight:700;">✅ 音声結合：準備完了</span><br><span style="color:#cbd5e1; font-size:11px;">楽曲「' + (S.audio.name || '') + '」をAAC音声トラックとして動画に結合します。</span>';
+    }
+  }
 }
 async function codecNote() {
   const [w, h] = J.outputSize(S.project);
@@ -602,6 +615,22 @@ function baseName() {
 }
 async function runExport(kind, opts = {}) {
   if (S.exporting) return;
+
+  if (kind === 'mp4') {
+    const wantsAudio = S.project.includeAudio !== false && !opts.skipAudio;
+    if (wantsAudio && (!S.audio || !S.audio.buffer)) {
+      const ok = confirm("【楽曲ファイルが読み込まれていません】\n\n現在、楽曲ファイルが設定されていないため【無音（映像のみ）】で書き出されます。\n\n・音声付きで書き出す場合：「キャンセル」を押して「🎵 曲を読み込む」から曲を選択してください。\n・無音のまま書き出す場合：「OK」を押してください。");
+      if (!ok) {
+        const af = $('audioFile');
+        if (af) af.click();
+        return;
+      }
+    } else if (wantsAudio && typeof AudioEncoder === 'undefined') {
+      const ok = confirm("【お使いの端末・ブラウザに関する重要なお知らせ】\n\n現在ご利用の端末・ブラウザ（iPhone / iPad Safari等）は、Appleの仕様制限によりブラウザ内での動画音声エンコード（AudioEncoder）に対応していません。\nそのため、この端末では【映像のみ（無音）】での書き出しとなります。\n\n※音声付きのMP4動画を出力するには、PC（Google ChromeまたはMicrosoft Edge）から本サイトを開いて書き出しを行ってください。\n\nこのまま映像のみで出力しますか？");
+      if (!ok) return;
+    }
+  }
+
   pause();
   const ac = new AbortController(); S.exporting = ac;
   const boxes = [...document.querySelectorAll('.exp-box')];
@@ -631,7 +660,7 @@ async function runExport(kind, opts = {}) {
       });
       const sizeMB = (r.blob.size / 1048576).toFixed(1);
       const elapsed = ((performance.now() - t0) / 1000).toFixed(0);
-      txt.textContent = `完成 ${sizeMB}MB・${r.codec}${r.audio ? ' + ' + r.audio.toUpperCase() : ''}・${elapsed}秒`;
+      txt.textContent = `完成 ${sizeMB}MB・${r.codec}${r.audio ? ' + ' + (r.audioLabel || r.audio.toUpperCase()) : ''}・${elapsed}秒`;
       
       const fileName = baseName() + '.mp4';
       const blobUrl = URL.createObjectURL(r.blob);
@@ -649,7 +678,14 @@ async function runExport(kind, opts = {}) {
             <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
               <div>
                 <div style="font-weight:700; font-size:14px;">🎉 MP4動画が完成しました！ (${sizeMB}MB)</div>
-                <div style="font-size:11px; color:#a7f3d0; margin-top:2px;">自動保存されない場合は下のボタンを押してください</div>
+                ${r.audio ? `
+                  <div style="font-size:12px; color:#a7f3d0; margin-top:3px; font-weight:700;">🎵 音声トラック（${r.audioLabel || r.audio.toUpperCase()}）結合済み</div>
+                ` : `
+                  <div style="font-size:11px; color:#fde68a; margin-top:3px; font-weight:600; background:rgba(0,0,0,0.25); padding:3px 8px; border-radius:4px;">
+                    ⚠️ 音声なし（${r.noAudioReason || '無音で出力されました'}）
+                    ${typeof AudioEncoder === 'undefined' ? '<br>※iPhone/iPad等のブラウザは音声エンコードに非対応のため、PC（Chrome/Edge）での書き出しをおすすめします。' : ''}
+                  </div>
+                `}
                 ${r.notice ? `<div style="font-size:11px; color:#fde68a; margin-top:4px; font-weight:600;">⚠️ ${r.notice}</div>` : ''}
               </div>
               <a href="${blobUrl}" download="${fileName}" style="display:inline-flex; align-items:center; gap:6px; background:#fff; color:#065f46; font-weight:800; font-size:13px; padding:8px 18px; border-radius:6px; text-decoration:none; box-shadow:0 2px 6px rgba(0,0,0,0.2);">
@@ -657,6 +693,7 @@ async function runExport(kind, opts = {}) {
               </a>
             </div>
             <div style="margin-top:10px;">
+              <div style="font-size:11px; color:#a7f3d0; margin-bottom:4px;">▼ 動画・音声をプレビュー再生</div>
               <video controls preload="metadata" playsinline src="${blobUrl}" style="width:100%; max-height:220px; border-radius:6px; background:#000;"></video>
             </div>
           </div>
@@ -921,12 +958,13 @@ async function loadAudioFile(f) {
   try {
     pause();
     S.audio = await J.analyzeAudio(f);
-    $('audioName').textContent = `${f.name}（${J.fmtTime(S.audio.duration)}・約${S.audio.bpm}BPM）`;
+    $('audioName').innerHTML = `<span style="color:#059669; font-weight:700;">🎵 ${f.name}</span> <span style="color:#64748b; font-size:11px;">（${J.fmtTime(S.audio.duration)}・約${S.audio.bpm}BPM）</span>`;
     S.project.timing.snap = true;
     S.project.includeAudio = true;
     syncUI(); syncOut(); replan();
+    toast(`楽曲「${f.name}」を読み込みました`);
     return true;
-  } catch (err) { $('audioName').textContent = '読み込めませんでした: ' + err.message; S.audio = null; return false; }
+  } catch (err) { $('audioName').innerHTML = `<span style="color:#dc2626; font-weight:600;">読み込めませんでした: ${err.message}</span>`; S.audio = null; syncOut(); return false; }
 }
 
 /* ---------------- boot ---------------- */

@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>AMUVI PRO v2.6 (JIZURA)</title>
+<title>AMUVI PRO v2.7 (JIZURA)</title>
 <meta name="description" content="歌詞を入れると文字PV（リリックモーション）を自動で組み立てて MP4 に書き出すブラウザアプリ">
 <link rel="canonical" href="https://852wa.github.io/JIZURA/">
 <link rel="alternate" hreflang="ja" href="https://852wa.github.io/JIZURA/">
 <link rel="alternate" hreflang="en" href="https://852wa.github.io/JIZURA/en/">
 <meta property="og:type" content="website">
-<meta property="og:title" content="AMUVI PRO v2.6 (JIZURA)">
+<meta property="og:title" content="AMUVI PRO v2.7 (JIZURA)">
 <meta property="og:description" content="歌詞を入れると文字PV（リリックモーション）を自動で組み立てて MP4 に書き出すブラウザアプリ">
 <meta property="og:url" content="https://852wa.github.io/JIZURA/">
 <meta name="twitter:card" content="summary">
@@ -290,7 +290,7 @@ body {
   <header class="bar amuvi-header">
     <div class="brand">
       <span class="word amuvi-title">AMUVI PRO</span>
-      <span class="amuvi-version" style="font-size:11px; font-weight:700; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; border-radius:10px; padding:2px 8px; margin-left:8px; vertical-align:middle; letter-spacing:0.5px; box-shadow:0 2px 6px rgba(99,102,241,0.3);">v2.6</span>
+      <span class="amuvi-version" style="font-size:11px; font-weight:700; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; border-radius:10px; padding:2px 8px; margin-left:8px; vertical-align:middle; letter-spacing:0.5px; box-shadow:0 2px 6px rgba(99,102,241,0.3);">v2.7</span>
     </div>
     <div class="proj" style="display:none;">
       <input id="songTitle" type="text" placeholder="曲名">
@@ -333,7 +333,7 @@ body {
           <button id="btnClearBg" style="margin-left:auto; font-size:11px; padding:2px 8px; border:1px solid #7c3aed66; border-radius:4px; background:none; color:#7c3aed; cursor:pointer;">✕ 解除</button>
         </div>
         
-        <div id="audioName" class="muted audio-name amuvi-audio-name">曲なし</div>
+        <div id="audioName" class="muted audio-name amuvi-audio-name" style="padding:4px 8px; border-radius:4px; background:#f1f5f9; display:inline-block; margin-bottom:8px; font-size:12px;">曲なし</div>
 
         <textarea id="srtLyrics" rows="8" spellcheck="false" class="amuvi-textarea" placeholder="ここにSRT形式で入力するか、SRTファイルを読み込んでください"></textarea>
         <textarea id="lyrics" style="display:none;"></textarea>
@@ -342,7 +342,7 @@ body {
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
             <div style="display:flex; align-items:center; gap:8px;">
               <h3 class="amuvi-h2" style="font-size:16px; margin:0;">⏱ タイムライン</h3>
-              <span style="font-size:10px; font-weight:600; color:#cbd5e1; background:#334155; padding:2px 6px; border-radius:4px; border:1px solid #475569;">v2.6 音声完全連動</span>
+              <span style="font-size:10px; font-weight:600; color:#cbd5e1; background:#334155; padding:2px 6px; border-radius:4px; border:1px solid #475569;">v2.7 音声診断・完全対応</span>
             </div>
             <span style="font-size:11px; color:#94a3b8;">← スクロール | ブロックを左右にドラッグ | クリックで移動</span>
           </div>
@@ -444,11 +444,12 @@ body {
               <select id="eKey"><option value="off"></option><option value="green"></option><option value="black"></option></select>
             </div>
           </div>
-          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
             <label style="display:inline-flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:#e2e8f0; cursor:pointer;">
               <input id="eAudio" type="checkbox" checked style="accent-color:#8b5cf6; width:16px; height:16px; cursor:pointer;"> 🎵 音声を含めて書き出す
             </label>
           </div>
+          <div id="eAudioNote" style="font-size:11px; line-height:1.4; margin-bottom:12px; padding:6px 10px; border-radius:6px; background:#1e293b; border:1px solid #334155;"></div>
           <div class="outbtns amuvi-outbtns">
              <button id="eMP4" class="primary amuvi-export-btn">⬇️ MP4 動画を保存</button>
           </div>
@@ -4199,9 +4200,20 @@ J.pickVideoCodec = async (w, h, fps, bitrate, preferSoftware = false) => {
 };
 J.pickAudioCodec = async (sr, chn) => {
   if (typeof AudioEncoder === 'undefined') return null;
-  // Prioritize AAC (mp4a.40.2) for universal MP4 player compatibility, Opus as fallback
-  for (const c of [{ codec: 'mp4a.40.2', mux: 'aac', sr: 48000 }, { codec: 'opus', mux: 'opus', sr: 48000 }]) {
-    try { const s = await AudioEncoder.isConfigSupported({ codec: c.codec, sampleRate: c.sr, numberOfChannels: 2, bitrate: 128000 }); if (s.supported) return c; } catch (e) {}
+  const rates = [48000, 44100];
+  // 1. Prioritize AAC (mp4a.40.2) for universal MP4 player compatibility
+  for (const r of rates) {
+    try {
+      const s = await AudioEncoder.isConfigSupported({ codec: 'mp4a.40.2', sampleRate: r, numberOfChannels: 2, bitrate: 128000 });
+      if (s.supported) return { codec: 'mp4a.40.2', mux: 'aac', sr: r, label: 'AAC' };
+    } catch (e) {}
+  }
+  // 2. Fallback to Opus (note: some mobile players treat Opus in MP4 as silent)
+  for (const r of rates) {
+    try {
+      const s = await AudioEncoder.isConfigSupported({ codec: 'opus', sampleRate: r, numberOfChannels: 2, bitrate: 128000 });
+      if (s.supported) return { codec: 'opus', mux: 'opus', sr: r, label: 'Opus' };
+    } catch (e) {}
   }
   return null;
 };
@@ -4254,6 +4266,16 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
   J.glyphs.maxRes = isMobile ? 384 : (h >= 1000 ? 512 : 384);
   let audioIncluded = false;
   let audioNotice = '';
+  let noAudioReason = '';
+  if (!audio || !audio.buffer) {
+    noAudioReason = '楽曲ファイルが読み込まれていません';
+  } else if (project.includeAudio === false) {
+    noAudioReason = '音声を含める設定がOFFになっています';
+  } else if (typeof AudioEncoder === 'undefined') {
+    noAudioReason = 'お使いの端末（iOS Safari等）がAudioEncoder非対応です';
+  } else if (!ac) {
+    noAudioReason = 'お使いのブラウザがAAC音声エンコードに対応していません';
+  }
   const audioChunks = [];
 
   // Pre-encode audio upfront (typically 0.1 - 0.3s) so chunks can be interleaved with video frames
@@ -4312,7 +4334,8 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
       audioIncluded = audioChunks.length > 0;
     } catch (audioErr) {
       console.warn('Audio pre-encode failed, proceeding without audio:', audioErr);
-      audioNotice = '（音声エンコードで問題が発生したため映像のみ出力しました）';
+      audioNotice = '（音声エンコード失敗: ' + (audioErr.message || audioErr) + '）';
+      noAudioReason = '音声エンコードエラー: ' + (audioErr.message || audioErr);
       audioIncluded = false;
     }
   }
@@ -4383,7 +4406,9 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
     blob: new Blob([target.buffer], { type: 'video/mp4' }),
     codec: vc.label,
     audio: audioIncluded ? ac.mux : null,
+    audioLabel: audioIncluded ? (ac.label || ac.mux.toUpperCase()) : null,
     notice: audioNotice,
+    noAudioReason: audioIncluded ? '' : noAudioReason,
     width: w,
     height: h
   };
@@ -29600,6 +29625,19 @@ function syncOut() {
   const kb = $('keyBadge');
   kb.hidden = k === 'off';
   if (k !== 'off') kb.innerHTML = `<i style="background:${J.KEY_BG[k]}"></i>${k === 'green' ? 'グリーンバック' : 'ブラックバック'}`;
+
+  const noteEl = $('eAudioNote');
+  if (noteEl) {
+    if (typeof AudioEncoder === 'undefined') {
+      noteEl.innerHTML = '<span style="color:#f59e0b; font-weight:700;">⚠️ お使いの端末（iOS Safari等）は音声出力非対応です</span><br><span style="color:#cbd5e1; font-size:11px;">Appleの仕様制限により本端末では【映像のみ】書き出されます。音声付きで動画を書き出すには、PC（Google ChromeまたはMicrosoft Edge）からご利用ください。</span>';
+    } else if (!S.audio || !S.audio.buffer) {
+      noteEl.innerHTML = '<span style="color:#f59e0b; font-weight:700;">⚠️ 楽曲が未設定です（無音出力モード）</span><br><span style="color:#cbd5e1; font-size:11px;">上の「🎵 曲を読み込む」から音楽ファイルを選択すると、動画に音声を結合できます。</span>';
+    } else if (!incA) {
+      noteEl.innerHTML = '<span style="color:#94a3b8; font-weight:700;">🔇 音声書き出し：OFF</span><br><span style="color:#94a3b8; font-size:11px;">チェックを入れると楽曲「' + (S.audio.name || '') + '」を結合します。</span>';
+    } else {
+      noteEl.innerHTML = '<span style="color:#10b981; font-weight:700;">✅ 音声結合：準備完了</span><br><span style="color:#cbd5e1; font-size:11px;">楽曲「' + (S.audio.name || '') + '」をAAC音声トラックとして動画に結合します。</span>';
+    }
+  }
 }
 async function codecNote() {
   const [w, h] = J.outputSize(S.project);
@@ -29615,6 +29653,22 @@ function baseName() {
 }
 async function runExport(kind, opts = {}) {
   if (S.exporting) return;
+
+  if (kind === 'mp4') {
+    const wantsAudio = S.project.includeAudio !== false && !opts.skipAudio;
+    if (wantsAudio && (!S.audio || !S.audio.buffer)) {
+      const ok = confirm("【楽曲ファイルが読み込まれていません】\n\n現在、楽曲ファイルが設定されていないため【無音（映像のみ）】で書き出されます。\n\n・音声付きで書き出す場合：「キャンセル」を押して「🎵 曲を読み込む」から曲を選択してください。\n・無音のまま書き出す場合：「OK」を押してください。");
+      if (!ok) {
+        const af = $('audioFile');
+        if (af) af.click();
+        return;
+      }
+    } else if (wantsAudio && typeof AudioEncoder === 'undefined') {
+      const ok = confirm("【お使いの端末・ブラウザに関する重要なお知らせ】\n\n現在ご利用の端末・ブラウザ（iPhone / iPad Safari等）は、Appleの仕様制限によりブラウザ内での動画音声エンコード（AudioEncoder）に対応していません。\nそのため、この端末では【映像のみ（無音）】での書き出しとなります。\n\n※音声付きのMP4動画を出力するには、PC（Google ChromeまたはMicrosoft Edge）から本サイトを開いて書き出しを行ってください。\n\nこのまま映像のみで出力しますか？");
+      if (!ok) return;
+    }
+  }
+
   pause();
   const ac = new AbortController(); S.exporting = ac;
   const boxes = [...document.querySelectorAll('.exp-box')];
@@ -29644,7 +29698,7 @@ async function runExport(kind, opts = {}) {
       });
       const sizeMB = (r.blob.size / 1048576).toFixed(1);
       const elapsed = ((performance.now() - t0) / 1000).toFixed(0);
-      txt.textContent = `完成 ${sizeMB}MB・${r.codec}${r.audio ? ' + ' + r.audio.toUpperCase() : ''}・${elapsed}秒`;
+      txt.textContent = `完成 ${sizeMB}MB・${r.codec}${r.audio ? ' + ' + (r.audioLabel || r.audio.toUpperCase()) : ''}・${elapsed}秒`;
       
       const fileName = baseName() + '.mp4';
       const blobUrl = URL.createObjectURL(r.blob);
@@ -29662,7 +29716,14 @@ async function runExport(kind, opts = {}) {
             <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
               <div>
                 <div style="font-weight:700; font-size:14px;">🎉 MP4動画が完成しました！ (${sizeMB}MB)</div>
-                <div style="font-size:11px; color:#a7f3d0; margin-top:2px;">自動保存されない場合は下のボタンを押してください</div>
+                ${r.audio ? `
+                  <div style="font-size:12px; color:#a7f3d0; margin-top:3px; font-weight:700;">🎵 音声トラック（${r.audioLabel || r.audio.toUpperCase()}）結合済み</div>
+                ` : `
+                  <div style="font-size:11px; color:#fde68a; margin-top:3px; font-weight:600; background:rgba(0,0,0,0.25); padding:3px 8px; border-radius:4px;">
+                    ⚠️ 音声なし（${r.noAudioReason || '無音で出力されました'}）
+                    ${typeof AudioEncoder === 'undefined' ? '<br>※iPhone/iPad等のブラウザは音声エンコードに非対応のため、PC（Chrome/Edge）での書き出しをおすすめします。' : ''}
+                  </div>
+                `}
                 ${r.notice ? `<div style="font-size:11px; color:#fde68a; margin-top:4px; font-weight:600;">⚠️ ${r.notice}</div>` : ''}
               </div>
               <a href="${blobUrl}" download="${fileName}" style="display:inline-flex; align-items:center; gap:6px; background:#fff; color:#065f46; font-weight:800; font-size:13px; padding:8px 18px; border-radius:6px; text-decoration:none; box-shadow:0 2px 6px rgba(0,0,0,0.2);">
@@ -29670,6 +29731,7 @@ async function runExport(kind, opts = {}) {
               </a>
             </div>
             <div style="margin-top:10px;">
+              <div style="font-size:11px; color:#a7f3d0; margin-bottom:4px;">▼ 動画・音声をプレビュー再生</div>
               <video controls preload="metadata" playsinline src="${blobUrl}" style="width:100%; max-height:220px; border-radius:6px; background:#000;"></video>
             </div>
           </div>
@@ -29934,12 +29996,13 @@ async function loadAudioFile(f) {
   try {
     pause();
     S.audio = await J.analyzeAudio(f);
-    $('audioName').textContent = `${f.name}（${J.fmtTime(S.audio.duration)}・約${S.audio.bpm}BPM）`;
+    $('audioName').innerHTML = `<span style="color:#059669; font-weight:700;">🎵 ${f.name}</span> <span style="color:#64748b; font-size:11px;">（${J.fmtTime(S.audio.duration)}・約${S.audio.bpm}BPM）</span>`;
     S.project.timing.snap = true;
     S.project.includeAudio = true;
     syncUI(); syncOut(); replan();
+    toast(`楽曲「${f.name}」を読み込みました`);
     return true;
-  } catch (err) { $('audioName').textContent = '読み込めませんでした: ' + err.message; S.audio = null; return false; }
+  } catch (err) { $('audioName').innerHTML = `<span style="color:#dc2626; font-weight:600;">読み込めませんでした: ${err.message}</span>`; S.audio = null; syncOut(); return false; }
 }
 
 /* ---------------- boot ---------------- */

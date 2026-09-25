@@ -44,9 +44,20 @@ J.pickVideoCodec = async (w, h, fps, bitrate, preferSoftware = false) => {
 };
 J.pickAudioCodec = async (sr, chn) => {
   if (typeof AudioEncoder === 'undefined') return null;
-  // Prioritize AAC (mp4a.40.2) for universal MP4 player compatibility, Opus as fallback
-  for (const c of [{ codec: 'mp4a.40.2', mux: 'aac', sr: 48000 }, { codec: 'opus', mux: 'opus', sr: 48000 }]) {
-    try { const s = await AudioEncoder.isConfigSupported({ codec: c.codec, sampleRate: c.sr, numberOfChannels: 2, bitrate: 128000 }); if (s.supported) return c; } catch (e) {}
+  const rates = [48000, 44100];
+  // 1. Prioritize AAC (mp4a.40.2) for universal MP4 player compatibility
+  for (const r of rates) {
+    try {
+      const s = await AudioEncoder.isConfigSupported({ codec: 'mp4a.40.2', sampleRate: r, numberOfChannels: 2, bitrate: 128000 });
+      if (s.supported) return { codec: 'mp4a.40.2', mux: 'aac', sr: r, label: 'AAC' };
+    } catch (e) {}
+  }
+  // 2. Fallback to Opus (note: some mobile players treat Opus in MP4 as silent)
+  for (const r of rates) {
+    try {
+      const s = await AudioEncoder.isConfigSupported({ codec: 'opus', sampleRate: r, numberOfChannels: 2, bitrate: 128000 });
+      if (s.supported) return { codec: 'opus', mux: 'opus', sr: r, label: 'Opus' };
+    } catch (e) {}
   }
   return null;
 };
@@ -99,6 +110,16 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
   J.glyphs.maxRes = isMobile ? 384 : (h >= 1000 ? 512 : 384);
   let audioIncluded = false;
   let audioNotice = '';
+  let noAudioReason = '';
+  if (!audio || !audio.buffer) {
+    noAudioReason = '楽曲ファイルが読み込まれていません';
+  } else if (project.includeAudio === false) {
+    noAudioReason = '音声を含める設定がOFFになっています';
+  } else if (typeof AudioEncoder === 'undefined') {
+    noAudioReason = 'お使いの端末（iOS Safari等）がAudioEncoder非対応です';
+  } else if (!ac) {
+    noAudioReason = 'お使いのブラウザがAAC音声エンコードに対応していません';
+  }
   const audioChunks = [];
 
   // Pre-encode audio upfront (typically 0.1 - 0.3s) so chunks can be interleaved with video frames
@@ -157,7 +178,8 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
       audioIncluded = audioChunks.length > 0;
     } catch (audioErr) {
       console.warn('Audio pre-encode failed, proceeding without audio:', audioErr);
-      audioNotice = '（音声エンコードで問題が発生したため映像のみ出力しました）';
+      audioNotice = '（音声エンコード失敗: ' + (audioErr.message || audioErr) + '）';
+      noAudioReason = '音声エンコードエラー: ' + (audioErr.message || audioErr);
       audioIncluded = false;
     }
   }
@@ -228,7 +250,9 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
     blob: new Blob([target.buffer], { type: 'video/mp4' }),
     codec: vc.label,
     audio: audioIncluded ? ac.mux : null,
+    audioLabel: audioIncluded ? (ac.label || ac.mux.toUpperCase()) : null,
     notice: audioNotice,
+    noAudioReason: audioIncluded ? '' : noAudioReason,
     width: w,
     height: h
   };
