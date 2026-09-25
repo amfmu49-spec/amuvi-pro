@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>AMUVI PRO v2.9.8 (JIZURA)</title>
+<title>LYRIMO v2.9.8 (JIZURA)</title>
 <meta name="description" content="歌詞を入れると文字PV（リリックモーション）を自動で組み立てて MP4 に書き出すブラウザアプリ">
 <link rel="canonical" href="https://852wa.github.io/JIZURA/">
 <link rel="alternate" hreflang="ja" href="https://852wa.github.io/JIZURA/">
 <link rel="alternate" hreflang="en" href="https://852wa.github.io/JIZURA/en/">
 <meta property="og:type" content="website">
-<meta property="og:title" content="AMUVI PRO v2.9.8 (JIZURA)">
+<meta property="og:title" content="LYRIMO v2.9.8 (JIZURA)">
 <meta property="og:description" content="歌詞を入れると文字PV（リリックモーション）を自動で組み立てて MP4 に書き出すブラウザアプリ">
 <meta property="og:url" content="https://852wa.github.io/JIZURA/">
 <meta name="twitter:card" content="summary">
@@ -289,7 +289,7 @@ body {
 <div id="app" class="amuvi-pro">
   <header class="bar amuvi-header">
     <div class="brand">
-      <span class="word amuvi-title">AMUVI PRO</span>
+      <span class="word amuvi-title">LYRIMO</span>
       <span class="amuvi-version" style="font-size:11px; font-weight:700; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; border-radius:10px; padding:2px 8px; margin-left:8px; vertical-align:middle; letter-spacing:0.5px; box-shadow:0 2px 6px rgba(99,102,241,0.3);">v2.9.8</span>
     </div>
     <div class="proj" style="display:none;">
@@ -3704,7 +3704,7 @@ class Renderer {
     // ---------- background ----------
     const key = plan.keyBg && J.KEY_BG && J.KEY_BG[plan.keyBg] ? plan.keyBg : null;   // 合成用: white-on-black, finished in keyFinish()
     if (key && !opt.transparent) { ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, W, H); }
-    else if (!opt.transparent) {
+    else if (!opt.transparent) {\n      if (window._bgImgObj) { ctx.drawImage(window._bgImgObj, 0, 0, W, H); } else 
       ctx.fillStyle = sc.bg; ctx.fillRect(0, 0, W, H);
       const g = ctx.createRadialGradient(W / 2, H * 0.45, 0, W / 2, H / 2, Math.hypot(W, H) * 0.6);
       const lift = J.lum(sc.bg) < 0.5 ? 'rgba(255,255,255,0.045)' : 'rgba(255,255,255,0.10)';
@@ -30034,12 +30034,12 @@ function bind() {
   $('lineScale').addEventListener('change', e => { S.project.timing.lineScale = J.clamp(parseFloat(e.target.value) || 1, 0.3, 4); replan(); });
   $('snap').addEventListener('change', e => { S.project.timing.snap = e.target.checked; replan(); });
   $('btnResetTimes').addEventListener('click', () => { S.project.timing.lineTimes = {}; replan(); });
-  S.bgImageUrl = null;
+  S.bgImageUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII='; window._bgImgObj = new Image(); window._bgImgObj.src = S.bgImageUrl;
   $('bgImageFile')?.addEventListener('change', e => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
     const url = URL.createObjectURL(f);
-    S.bgImageUrl = url;
+    S.bgImageUrl = url;\n    window._bgImgObj = new Image(); window._bgImgObj.src = url;
     const layer = document.getElementById('bgImageLayer');
     if (layer) layer.style.backgroundImage = `url('${url}')`;
     const bar = document.getElementById('bgImageBar');
@@ -30049,7 +30049,7 @@ function bind() {
     S.need = true;
   });
   document.getElementById('btnClearBg')?.addEventListener('click', () => {
-    S.bgImageUrl = null;
+    S.bgImageUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII='; window._bgImgObj = new Image(); window._bgImgObj.src = S.bgImageUrl;
     const layer = document.getElementById('bgImageLayer');
     if (layer) layer.style.backgroundImage = '';
     const bar = document.getElementById('bgImageBar');
@@ -30207,7 +30207,7 @@ async function loadAudioFile(f) {
 
 /* ---------------- boot ---------------- */
 function boot() {
-  S.project = loadLocal();
+  S.project = loadLocal();\n  const layer = document.getElementById('bgImageLayer');\n  if (layer && S.bgImageUrl) layer.style.backgroundImage = url('');\n  if (S.bgImageUrl) { window._bgImgObj = new Image(); window._bgImgObj.src = S.bgImageUrl; }
   bind(); initVolume(); syncUI(); replan();
   let mode = 'easy'; try { mode = localStorage.getItem('jizura.mode') || 'easy'; } catch (e) {}
   setMode(mode); commit();

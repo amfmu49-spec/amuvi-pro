@@ -807,12 +807,12 @@ function bind() {
   $('lineScale').addEventListener('change', e => { S.project.timing.lineScale = J.clamp(parseFloat(e.target.value) || 1, 0.3, 4); replan(); });
   $('snap').addEventListener('change', e => { S.project.timing.snap = e.target.checked; replan(); });
   $('btnResetTimes').addEventListener('click', () => { S.project.timing.lineTimes = {}; replan(); });
-  S.bgImageUrl = null;
+  S.bgImageUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII='; window._bgImgObj = new Image(); window._bgImgObj.src = S.bgImageUrl;
   $('bgImageFile')?.addEventListener('change', e => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
     const url = URL.createObjectURL(f);
-    S.bgImageUrl = url;
+    S.bgImageUrl = url;\n    window._bgImgObj = new Image(); window._bgImgObj.src = url;
     const layer = document.getElementById('bgImageLayer');
     if (layer) layer.style.backgroundImage = `url('${url}')`;
     const bar = document.getElementById('bgImageBar');
@@ -822,7 +822,7 @@ function bind() {
     S.need = true;
   });
   document.getElementById('btnClearBg')?.addEventListener('click', () => {
-    S.bgImageUrl = null;
+    S.bgImageUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII='; window._bgImgObj = new Image(); window._bgImgObj.src = S.bgImageUrl;
     const layer = document.getElementById('bgImageLayer');
     if (layer) layer.style.backgroundImage = '';
     const bar = document.getElementById('bgImageBar');
@@ -980,7 +980,7 @@ async function loadAudioFile(f) {
 
 /* ---------------- boot ---------------- */
 function boot() {
-  S.project = loadLocal();
+  S.project = loadLocal();\n  const layer = document.getElementById('bgImageLayer');\n  if (layer && S.bgImageUrl) layer.style.backgroundImage = url('');\n  if (S.bgImageUrl) { window._bgImgObj = new Image(); window._bgImgObj.src = S.bgImageUrl; }
   bind(); initVolume(); syncUI(); replan();
   let mode = 'easy'; try { mode = localStorage.getItem('jizura.mode') || 'easy'; } catch (e) {}
   setMode(mode); commit();
