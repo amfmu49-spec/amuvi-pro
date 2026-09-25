@@ -126,8 +126,6 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
   } else if (!ac) {
     noAudioReason = 'お使いのブラウザがAAC音声エンコードに対応していません';
   }
-  const audioChunks = [];
-
   // Pre-encode audio upfront (typically 0.1 - 0.3s) so chunks can be interleaved with video frames
   if (ac) {
     onProgress && onProgress(0.01, '音声を準備中…');
@@ -140,11 +138,16 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
           // Safari / Android workaround: force AAC decoderConfig if missing
           if (!meta) meta = {};
           if (!meta.decoderConfig && ac.mux === 'aac') {
+            const objType = 2; // AAC-LC
+            const freqIdx = ac.sr === 48000 ? 3 : (ac.sr === 44100 ? 4 : 3);
+            const chanCfg = chn;
+            const b1 = (objType << 3) | (freqIdx >>> 1);
+            const b2 = ((freqIdx & 1) << 7) | (chanCfg << 3);
             meta.decoderConfig = {
               codec: ac.codec,
               sampleRate: ac.sr,
               numberOfChannels: chn,
-              description: new Uint8Array([ac.sr === 48000 ? 0x13 : 0x12, 0x10])
+              description: new Uint8Array([b1, b2])
             };
           }
           
@@ -155,7 +158,7 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
           const data = new Uint8Array(chunk.byteLength);
           chunk.copyTo(data);
           
-          audioChunks.push({ data, type: chunk.type, timestamp: chunk.timestamp, duration, meta });
+          muxer.addAudioChunkRaw(data, chunk.type, chunk.timestamp, duration, meta);
         },
         error: e => { console.error('AudioEncoder error:', e); aerr = e; }
       });
@@ -208,7 +211,6 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
     }
   }
 
-  let audioChunkIdx = 0;
   try {
     const maxVencQueue = isMobile ? 2 : 4;
     for (let i = 0; i < total; i++) {
@@ -220,13 +222,7 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
       venc.encode(vf, { keyFrame: i % (fps * 2) === 0 });
       vf.close();
 
-      // Interleave audio chunks whose timestamp is <= current video time
-      if (audioIncluded) {
-        while (audioChunkIdx < audioChunks.length && audioChunks[audioChunkIdx].timestamp <= curTime * 1e6) {
-          const item = audioChunks[audioChunkIdx++];
-          muxer.addAudioChunkRaw(item.data, item.type, item.timestamp, item.duration, item.meta);
-        }
-      }
+      // audio is already added
 
       while (venc.encodeQueueSize > maxVencQueue) {
         if (err) throw err;
@@ -257,14 +253,6 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
   }
   try { venc.close(); } catch (e) {}
   if (err) throw err;
-
-  // Flush any remaining audio chunks
-  if (audioIncluded) {
-    while (audioChunkIdx < audioChunks.length) {
-      const item = audioChunks[audioChunkIdx++];
-      muxer.addAudioChunkRaw(item.data, item.type, item.timestamp, item.duration, item.meta);
-    }
-  }
 
   onProgress && onProgress(0.99, 'MP4コンテナを出力中…');
   muxer.finalize();

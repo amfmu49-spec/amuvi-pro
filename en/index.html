@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>AMUVI PRO v2.9.6 — Lyric Motion Video Maker</title>
+<title>AMUVI PRO v2.9.7 — Lyric Motion Video Maker</title>
 <meta name="description" content="Turn lyrics into animated lyric videos in your browser and export MP4.">
 <link rel="canonical" href="https://852wa.github.io/JIZURA/en/">
 <link rel="alternate" hreflang="ja" href="https://852wa.github.io/JIZURA/">
 <link rel="alternate" hreflang="en" href="https://852wa.github.io/JIZURA/en/">
 <meta property="og:type" content="website">
-<meta property="og:title" content="AMUVI PRO v2.9.6 — Lyric Motion Video Maker">
+<meta property="og:title" content="AMUVI PRO v2.9.7 — Lyric Motion Video Maker">
 <meta property="og:description" content="Turn lyrics into animated lyric videos in your browser and export MP4.">
 <meta property="og:url" content="https://852wa.github.io/JIZURA/en/">
 <meta name="twitter:card" content="summary">
@@ -290,7 +290,7 @@ body {
   <header class="bar amuvi-header">
     <div class="brand">
       <span class="word amuvi-title">AMUVI PRO</span>
-      <span class="amuvi-version" style="font-size:11px; font-weight:700; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; border-radius:10px; padding:2px 8px; margin-left:8px; vertical-align:middle; letter-spacing:0.5px; box-shadow:0 2px 6px rgba(99,102,241,0.3);">v2.9.6</span>
+      <span class="amuvi-version" style="font-size:11px; font-weight:700; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; border-radius:10px; padding:2px 8px; margin-left:8px; vertical-align:middle; letter-spacing:0.5px; box-shadow:0 2px 6px rgba(99,102,241,0.3);">v2.9.7</span>
     </div>
     <div class="proj" style="display:none;">
       <input id="songTitle" type="text" placeholder="Song title">
@@ -4282,8 +4282,6 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
   } else if (!ac) {
     noAudioReason = 'お使いのブラウザがAAC音声エンコードに対応していません';
   }
-  const audioChunks = [];
-
   // Pre-encode audio upfront (typically 0.1 - 0.3s) so chunks can be interleaved with video frames
   if (ac) {
     onProgress && onProgress(0.01, '音声を準備中…');
@@ -4296,11 +4294,16 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
           // Safari / Android workaround: force AAC decoderConfig if missing
           if (!meta) meta = {};
           if (!meta.decoderConfig && ac.mux === 'aac') {
+            const objType = 2; // AAC-LC
+            const freqIdx = ac.sr === 48000 ? 3 : (ac.sr === 44100 ? 4 : 3);
+            const chanCfg = chn;
+            const b1 = (objType << 3) | (freqIdx >>> 1);
+            const b2 = ((freqIdx & 1) << 7) | (chanCfg << 3);
             meta.decoderConfig = {
               codec: ac.codec,
               sampleRate: ac.sr,
               numberOfChannels: chn,
-              description: new Uint8Array([ac.sr === 48000 ? 0x13 : 0x12, 0x10])
+              description: new Uint8Array([b1, b2])
             };
           }
           
@@ -4311,7 +4314,7 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
           const data = new Uint8Array(chunk.byteLength);
           chunk.copyTo(data);
           
-          audioChunks.push({ data, type: chunk.type, timestamp: chunk.timestamp, duration, meta });
+          muxer.addAudioChunkRaw(data, chunk.type, chunk.timestamp, duration, meta);
         },
         error: e => { console.error('AudioEncoder error:', e); aerr = e; }
       });
@@ -4364,7 +4367,6 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
     }
   }
 
-  let audioChunkIdx = 0;
   try {
     const maxVencQueue = isMobile ? 2 : 4;
     for (let i = 0; i < total; i++) {
@@ -4376,13 +4378,7 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
       venc.encode(vf, { keyFrame: i % (fps * 2) === 0 });
       vf.close();
 
-      // Interleave audio chunks whose timestamp is <= current video time
-      if (audioIncluded) {
-        while (audioChunkIdx < audioChunks.length && audioChunks[audioChunkIdx].timestamp <= curTime * 1e6) {
-          const item = audioChunks[audioChunkIdx++];
-          muxer.addAudioChunkRaw(item.data, item.type, item.timestamp, item.duration, item.meta);
-        }
-      }
+      // audio is already added
 
       while (venc.encodeQueueSize > maxVencQueue) {
         if (err) throw err;
@@ -4413,14 +4409,6 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
   }
   try { venc.close(); } catch (e) {}
   if (err) throw err;
-
-  // Flush any remaining audio chunks
-  if (audioIncluded) {
-    while (audioChunkIdx < audioChunks.length) {
-      const item = audioChunks[audioChunkIdx++];
-      muxer.addAudioChunkRaw(item.data, item.type, item.timestamp, item.duration, item.meta);
-    }
-  }
 
   onProgress && onProgress(0.99, 'MP4コンテナを出力中…');
   muxer.finalize();
