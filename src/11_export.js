@@ -93,7 +93,7 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
   // fastStart: false writes compressed chunks directly to target and frees chunk memory immediately,
   // preventing browser out-of-memory tab reloads on smartphones.
   const target = new Mp4Muxer.ArrayBufferTarget();
-  const muxOpts = { target, video: { codec: vc.mux, width: w, height: h, frameRate: fps }, fastStart: false, firstTimestampBehavior: 'offset' };
+  const muxOpts = { target, video: { codec: vc.mux, width: w, height: h, frameRate: fps }, fastStart: 'in-memory', firstTimestampBehavior: 'offset' };
   if (ac) muxOpts.audio = { codec: ac.mux, numberOfChannels: 2, sampleRate: ac.sr };
   const muxer = new Mp4Muxer.Muxer(muxOpts);
   let err = null;
