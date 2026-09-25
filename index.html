@@ -4303,7 +4303,15 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
               description: new Uint8Array([ac.sr === 48000 ? 0x13 : 0x12, 0x10])
             };
           }
-          audioChunks.push({ chunk, meta });
+          
+          let duration = chunk.duration;
+          if (typeof duration !== 'number' || duration < 0 || isNaN(duration)) {
+            duration = 0;
+          }
+          const data = new Uint8Array(chunk.byteLength);
+          chunk.copyTo(data);
+          
+          audioChunks.push({ data, type: chunk.type, timestamp: chunk.timestamp, duration, meta });
         },
         error: e => { console.error('AudioEncoder error:', e); aerr = e; }
       });
@@ -4370,9 +4378,9 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
 
       // Interleave audio chunks whose timestamp is <= current video time
       if (audioIncluded) {
-        while (audioChunkIdx < audioChunks.length && audioChunks[audioChunkIdx].chunk.timestamp <= curTime * 1e6) {
+        while (audioChunkIdx < audioChunks.length && audioChunks[audioChunkIdx].timestamp <= curTime * 1e6) {
           const item = audioChunks[audioChunkIdx++];
-          muxer.addAudioChunk(item.chunk, item.meta);
+          muxer.addAudioChunkRaw(item.data, item.type, item.timestamp, item.duration, item.meta);
         }
       }
 
