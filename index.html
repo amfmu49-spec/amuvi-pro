@@ -30078,7 +30078,7 @@ function bind() {
   $('lineScale').addEventListener('change', e => { S.project.timing.lineScale = J.clamp(parseFloat(e.target.value) || 1, 0.3, 4); replan(); });
   $('snap').addEventListener('change', e => { S.project.timing.snap = e.target.checked; replan(); });
   $('btnResetTimes').addEventListener('click', () => { S.project.timing.lineTimes = {}; replan(); });
-  S.bgImageUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII='; window._bgImgObj = new Image(); window._bgImgObj.src = S.bgImageUrl;
+  S.bgImageUrl = null; window._bgImgObj = null;
   $('bgImageFile')?.addEventListener('change', e => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
@@ -30094,7 +30094,7 @@ function bind() {
     S.need = true;
   });
   document.getElementById('btnClearBg')?.addEventListener('click', () => {
-    S.bgImageUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII='; window._bgImgObj = new Image(); window._bgImgObj.src = S.bgImageUrl;
+    S.bgImageUrl = null; window._bgImgObj = null;
     const layer = document.getElementById('bgImageLayer');
     if (layer) layer.style.backgroundImage = '';
     const bar = document.getElementById('bgImageBar');
