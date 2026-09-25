@@ -97,15 +97,91 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
   const scale = w / plan.W;
   const prevRes = J.glyphs.maxRes;
   J.glyphs.maxRes = isMobile ? 384 : (h >= 1000 ? 512 : 384);
+  let audioIncluded = false;
+  let audioNotice = '';
+  const audioChunks = [];
+
+  // Pre-encode audio upfront (typically 0.1 - 0.3s) so chunks can be interleaved with video frames
+  if (ac) {
+    onProgress && onProgress(0.01, '音声を準備中…');
+    try {
+      const rs = await resample(audio.buffer, ac.sr, plan.duration);
+      const chn = 2;
+      let aerr = null;
+      const aenc = new AudioEncoder({
+        output: (chunk, meta) => {
+          audioChunks.push({ chunk, meta });
+        },
+        error: e => { console.error('AudioEncoder error:', e); aerr = e; }
+      });
+      aenc.configure({ codec: ac.codec, sampleRate: ac.sr, numberOfChannels: chn, bitrate: 128000 });
+      // Opus uses 960 sample frames (20ms at 48kHz); AAC uses 1024 sample frames
+      const frameUnit = ac.mux === 'opus' ? 960 : 1024;
+      const block = frameUnit * 4;
+      const frames = rs.length;
+      const maxPadFrames = block + frameUnit;
+      const dataBuffer = new Float32Array(maxPadFrames * chn);
+      for (let off = 0; off < frames; off += block) {
+        if (aerr) throw aerr;
+        const n = Math.min(block, frames - off);
+        const padFrames = (n % frameUnit === 0) ? n : Math.ceil(n / frameUnit) * frameUnit;
+        dataBuffer.fill(0, 0, padFrames * chn);
+        for (let c = 0; c < chn; c++) {
+          dataBuffer.set(rs.getChannelData(c).subarray(off, off + n), c * padFrames);
+        }
+        const frameData = dataBuffer.subarray(0, padFrames * chn);
+        const ad = new AudioData({
+          format: 'f32-planar',
+          sampleRate: ac.sr,
+          numberOfFrames: padFrames,
+          numberOfChannels: chn,
+          timestamp: Math.round(off * 1e6 / ac.sr),
+          data: frameData
+        });
+        aenc.encode(ad);
+        ad.close();
+        while (aenc.encodeQueueSize > (isMobile ? 3 : 8)) {
+          if (aerr) throw aerr;
+          await new Promise(r => setTimeout(r, 4));
+        }
+      }
+      while (aenc.encodeQueueSize > 0) {
+        if (aerr) throw aerr;
+        await new Promise(r => setTimeout(r, 10));
+      }
+      const flushPromise = aenc.flush();
+      const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Audio flush timeout')), 25000));
+      await Promise.race([flushPromise, timeoutPromise]);
+      try { aenc.close(); } catch (e) {}
+      if (aerr) throw aerr;
+      audioIncluded = audioChunks.length > 0;
+    } catch (audioErr) {
+      console.warn('Audio pre-encode failed, proceeding without audio:', audioErr);
+      audioNotice = '（音声エンコードで問題が発生したため映像のみ出力しました）';
+      audioIncluded = false;
+    }
+  }
+
+  let audioChunkIdx = 0;
   try {
     const maxVencQueue = isMobile ? 2 : 4;
     for (let i = 0; i < total; i++) {
       if (signal && signal.aborted) { try { venc.close(); } catch (e) {} throw new Error('キャンセルしました'); }
       if (err) throw err;
-      R.frame(ctx, plan, i / fps, { scale });
-      const vf = new VideoFrame(canvas, { timestamp: Math.round(i * 1e6 / fps), duration: Math.round(1e6 / fps) });
+      const curTime = i / fps;
+      R.frame(ctx, plan, curTime, { scale });
+      const vf = new VideoFrame(canvas, { timestamp: Math.round(curTime * 1e6), duration: Math.round(1e6 / fps) });
       venc.encode(vf, { keyFrame: i % (fps * 2) === 0 });
       vf.close();
+
+      // Interleave audio chunks whose timestamp is <= current video time
+      if (audioIncluded) {
+        while (audioChunkIdx < audioChunks.length && audioChunks[audioChunkIdx].chunk.timestamp <= curTime * 1e6) {
+          const item = audioChunks[audioChunkIdx++];
+          muxer.addAudioChunk(item.chunk, item.meta);
+        }
+      }
+
       while (venc.encodeQueueSize > maxVencQueue) {
         if (err) throw err;
         await new Promise(r => setTimeout(r, 6));
@@ -136,64 +212,14 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
   try { venc.close(); } catch (e) {}
   if (err) throw err;
 
-  let audioIncluded = false;
-  let audioNotice = '';
-  if (ac) {
-    onProgress && onProgress(0.97, '音声をエンコード中…');
-    try {
-      const rs = await resample(audio.buffer, ac.sr, plan.duration);
-      const chn = 2;
-      let aerr = null;
-      const aenc = new AudioEncoder({
-        output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
-        error: e => { console.error('AudioEncoder error:', e); aerr = e; }
-      });
-      aenc.configure({ codec: ac.codec, sampleRate: ac.sr, numberOfChannels: chn, bitrate: 128000 });
-      // Opus uses 960 sample frames (20ms at 48kHz); AAC uses 1024 sample frames
-      const frameUnit = ac.mux === 'opus' ? 960 : 1024;
-      const block = frameUnit * 4;
-      const frames = rs.length;
-      const maxPadFrames = block + frameUnit;
-      const dataBuffer = new Float32Array(maxPadFrames * chn);
-      for (let off = 0; off < frames; off += block) {
-        if (aerr) throw aerr;
-        const n = Math.min(block, frames - off);
-        const padFrames = (n % frameUnit === 0) ? n : Math.ceil(n / frameUnit) * frameUnit;
-        dataBuffer.fill(0, 0, padFrames * chn);
-        for (let c = 0; c < chn; c++) {
-          dataBuffer.set(rs.getChannelData(c).subarray(off, off + n), c * padFrames);
-        }
-        const frameData = dataBuffer.subarray(0, padFrames * chn);
-        const ad = new AudioData({
-          format: 'f32-planar',
-          sampleRate: ac.sr,
-          numberOfFrames: padFrames,
-          numberOfChannels: chn,
-          timestamp: Math.round(off * 1e6 / ac.sr),
-          data: frameData
-        });
-        aenc.encode(ad);
-        ad.close();
-        while (aenc.encodeQueueSize > (isMobile ? 2 : 6)) {
-          if (aerr) throw aerr;
-          await new Promise(r => setTimeout(r, 4));
-        }
-      }
-      while (aenc.encodeQueueSize > 0) {
-        if (aerr) throw aerr;
-        await new Promise(r => setTimeout(r, 10));
-      }
-      const flushPromise = aenc.flush();
-      const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Audio flush timeout')), 25000));
-      await Promise.race([flushPromise, timeoutPromise]);
-      try { aenc.close(); } catch (e) {}
-      if (aerr) throw aerr;
-      audioIncluded = true;
-    } catch (audioErr) {
-      console.warn('Audio encoding failed, continuing video-only export:', audioErr);
-      audioNotice = '（音声エンコードで問題が発生したため映像のみ保存しました）';
+  // Flush any remaining audio chunks
+  if (audioIncluded) {
+    while (audioChunkIdx < audioChunks.length) {
+      const item = audioChunks[audioChunkIdx++];
+      muxer.addAudioChunk(item.chunk, item.meta);
     }
   }
+
   onProgress && onProgress(0.99, 'MP4コンテナを出力中…');
   muxer.finalize();
   if (J.glyphs && J.glyphs.clear) J.glyphs.clear();

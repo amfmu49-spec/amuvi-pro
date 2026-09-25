@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>AMUVI PRO v2.5 — Lyric Motion Video Maker</title>
+<title>AMUVI PRO v2.6 — Lyric Motion Video Maker</title>
 <meta name="description" content="Turn lyrics into animated lyric videos in your browser and export MP4.">
 <link rel="canonical" href="https://852wa.github.io/JIZURA/en/">
 <link rel="alternate" hreflang="ja" href="https://852wa.github.io/JIZURA/">
 <link rel="alternate" hreflang="en" href="https://852wa.github.io/JIZURA/en/">
 <meta property="og:type" content="website">
-<meta property="og:title" content="AMUVI PRO v2.5 — Lyric Motion Video Maker">
+<meta property="og:title" content="AMUVI PRO v2.6 — Lyric Motion Video Maker">
 <meta property="og:description" content="Turn lyrics into animated lyric videos in your browser and export MP4.">
 <meta property="og:url" content="https://852wa.github.io/JIZURA/en/">
 <meta name="twitter:card" content="summary">
@@ -290,7 +290,7 @@ body {
   <header class="bar amuvi-header">
     <div class="brand">
       <span class="word amuvi-title">AMUVI PRO</span>
-      <span class="amuvi-version" style="font-size:11px; font-weight:700; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; border-radius:10px; padding:2px 8px; margin-left:8px; vertical-align:middle; letter-spacing:0.5px; box-shadow:0 2px 6px rgba(99,102,241,0.3);">v2.5</span>
+      <span class="amuvi-version" style="font-size:11px; font-weight:700; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; border-radius:10px; padding:2px 8px; margin-left:8px; vertical-align:middle; letter-spacing:0.5px; box-shadow:0 2px 6px rgba(99,102,241,0.3);">v2.6</span>
     </div>
     <div class="proj" style="display:none;">
       <input id="songTitle" type="text" placeholder="Song title">
@@ -342,7 +342,7 @@ body {
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
             <div style="display:flex; align-items:center; gap:8px;">
               <h3 class="amuvi-h2" style="font-size:16px; margin:0;">⏱ タイムライン</h3>
-              <span style="font-size:10px; font-weight:600; color:#cbd5e1; background:#334155; padding:2px 6px; border-radius:4px; border:1px solid #475569;">v2.5 スマホ安定化</span>
+              <span style="font-size:10px; font-weight:600; color:#cbd5e1; background:#334155; padding:2px 6px; border-radius:4px; border:1px solid #475569;">v2.6 音声完全連動</span>
             </div>
             <span style="font-size:11px; color:#94a3b8;">← スクロール | ブロックを左右にドラッグ | クリックで移動</span>
           </div>
@@ -443,6 +443,11 @@ body {
               <select id="eFps"><option>30</option></select>
               <select id="eKey"><option value="off"></option><option value="green"></option><option value="black"></option></select>
             </div>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+            <label style="display:inline-flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:#e2e8f0; cursor:pointer;">
+              <input id="eAudio" type="checkbox" checked style="accent-color:#8b5cf6; width:16px; height:16px; cursor:pointer;"> 🎵 音声を含めて書き出す
+            </label>
           </div>
           <div class="outbtns amuvi-outbtns">
              <button id="eMP4" class="primary amuvi-export-btn">⬇️ MP4 動画をSave</button>
@@ -4247,15 +4252,91 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
   const scale = w / plan.W;
   const prevRes = J.glyphs.maxRes;
   J.glyphs.maxRes = isMobile ? 384 : (h >= 1000 ? 512 : 384);
+  let audioIncluded = false;
+  let audioNotice = '';
+  const audioChunks = [];
+
+  // Pre-encode audio upfront (typically 0.1 - 0.3s) so chunks can be interleaved with video frames
+  if (ac) {
+    onProgress && onProgress(0.01, '音声を準備中…');
+    try {
+      const rs = await resample(audio.buffer, ac.sr, plan.duration);
+      const chn = 2;
+      let aerr = null;
+      const aenc = new AudioEncoder({
+        output: (chunk, meta) => {
+          audioChunks.push({ chunk, meta });
+        },
+        error: e => { console.error('AudioEncoder error:', e); aerr = e; }
+      });
+      aenc.configure({ codec: ac.codec, sampleRate: ac.sr, numberOfChannels: chn, bitrate: 128000 });
+      // Opus uses 960 sample frames (20ms at 48kHz); AAC uses 1024 sample frames
+      const frameUnit = ac.mux === 'opus' ? 960 : 1024;
+      const block = frameUnit * 4;
+      const frames = rs.length;
+      const maxPadFrames = block + frameUnit;
+      const dataBuffer = new Float32Array(maxPadFrames * chn);
+      for (let off = 0; off < frames; off += block) {
+        if (aerr) throw aerr;
+        const n = Math.min(block, frames - off);
+        const padFrames = (n % frameUnit === 0) ? n : Math.ceil(n / frameUnit) * frameUnit;
+        dataBuffer.fill(0, 0, padFrames * chn);
+        for (let c = 0; c < chn; c++) {
+          dataBuffer.set(rs.getChannelData(c).subarray(off, off + n), c * padFrames);
+        }
+        const frameData = dataBuffer.subarray(0, padFrames * chn);
+        const ad = new AudioData({
+          format: 'f32-planar',
+          sampleRate: ac.sr,
+          numberOfFrames: padFrames,
+          numberOfChannels: chn,
+          timestamp: Math.round(off * 1e6 / ac.sr),
+          data: frameData
+        });
+        aenc.encode(ad);
+        ad.close();
+        while (aenc.encodeQueueSize > (isMobile ? 3 : 8)) {
+          if (aerr) throw aerr;
+          await new Promise(r => setTimeout(r, 4));
+        }
+      }
+      while (aenc.encodeQueueSize > 0) {
+        if (aerr) throw aerr;
+        await new Promise(r => setTimeout(r, 10));
+      }
+      const flushPromise = aenc.flush();
+      const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Audio flush timeout')), 25000));
+      await Promise.race([flushPromise, timeoutPromise]);
+      try { aenc.close(); } catch (e) {}
+      if (aerr) throw aerr;
+      audioIncluded = audioChunks.length > 0;
+    } catch (audioErr) {
+      console.warn('Audio pre-encode failed, proceeding without audio:', audioErr);
+      audioNotice = '（音声エンコードで問題が発生したため映像のみ出力しました）';
+      audioIncluded = false;
+    }
+  }
+
+  let audioChunkIdx = 0;
   try {
     const maxVencQueue = isMobile ? 2 : 4;
     for (let i = 0; i < total; i++) {
       if (signal && signal.aborted) { try { venc.close(); } catch (e) {} throw new Error('Canceled'); }
       if (err) throw err;
-      R.frame(ctx, plan, i / fps, { scale });
-      const vf = new VideoFrame(canvas, { timestamp: Math.round(i * 1e6 / fps), duration: Math.round(1e6 / fps) });
+      const curTime = i / fps;
+      R.frame(ctx, plan, curTime, { scale });
+      const vf = new VideoFrame(canvas, { timestamp: Math.round(curTime * 1e6), duration: Math.round(1e6 / fps) });
       venc.encode(vf, { keyFrame: i % (fps * 2) === 0 });
       vf.close();
+
+      // Interleave audio chunks whose timestamp is <= current video time
+      if (audioIncluded) {
+        while (audioChunkIdx < audioChunks.length && audioChunks[audioChunkIdx].chunk.timestamp <= curTime * 1e6) {
+          const item = audioChunks[audioChunkIdx++];
+          muxer.addAudioChunk(item.chunk, item.meta);
+        }
+      }
+
       while (venc.encodeQueueSize > maxVencQueue) {
         if (err) throw err;
         await new Promise(r => setTimeout(r, 6));
@@ -4286,64 +4367,14 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
   try { venc.close(); } catch (e) {}
   if (err) throw err;
 
-  let audioIncluded = false;
-  let audioNotice = '';
-  if (ac) {
-    onProgress && onProgress(0.97, 'Encoding audio…');
-    try {
-      const rs = await resample(audio.buffer, ac.sr, plan.duration);
-      const chn = 2;
-      let aerr = null;
-      const aenc = new AudioEncoder({
-        output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
-        error: e => { console.error('AudioEncoder error:', e); aerr = e; }
-      });
-      aenc.configure({ codec: ac.codec, sampleRate: ac.sr, numberOfChannels: chn, bitrate: 128000 });
-      // Opus uses 960 sample frames (20ms at 48kHz); AAC uses 1024 sample frames
-      const frameUnit = ac.mux === 'opus' ? 960 : 1024;
-      const block = frameUnit * 4;
-      const frames = rs.length;
-      const maxPadFrames = block + frameUnit;
-      const dataBuffer = new Float32Array(maxPadFrames * chn);
-      for (let off = 0; off < frames; off += block) {
-        if (aerr) throw aerr;
-        const n = Math.min(block, frames - off);
-        const padFrames = (n % frameUnit === 0) ? n : Math.ceil(n / frameUnit) * frameUnit;
-        dataBuffer.fill(0, 0, padFrames * chn);
-        for (let c = 0; c < chn; c++) {
-          dataBuffer.set(rs.getChannelData(c).subarray(off, off + n), c * padFrames);
-        }
-        const frameData = dataBuffer.subarray(0, padFrames * chn);
-        const ad = new AudioData({
-          format: 'f32-planar',
-          sampleRate: ac.sr,
-          numberOfFrames: padFrames,
-          numberOfChannels: chn,
-          timestamp: Math.round(off * 1e6 / ac.sr),
-          data: frameData
-        });
-        aenc.encode(ad);
-        ad.close();
-        while (aenc.encodeQueueSize > (isMobile ? 2 : 6)) {
-          if (aerr) throw aerr;
-          await new Promise(r => setTimeout(r, 4));
-        }
-      }
-      while (aenc.encodeQueueSize > 0) {
-        if (aerr) throw aerr;
-        await new Promise(r => setTimeout(r, 10));
-      }
-      const flushPromise = aenc.flush();
-      const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Audio flush timeout')), 25000));
-      await Promise.race([flushPromise, timeoutPromise]);
-      try { aenc.close(); } catch (e) {}
-      if (aerr) throw aerr;
-      audioIncluded = true;
-    } catch (audioErr) {
-      console.warn('Audio encoding failed, continuing video-only export:', audioErr);
-      audioNotice = '（音声エンコードで問題が発生したため映像のみ保存しました）';
+  // Flush any remaining audio chunks
+  if (audioIncluded) {
+    while (audioChunkIdx < audioChunks.length) {
+      const item = audioChunks[audioChunkIdx++];
+      muxer.addAudioChunk(item.chunk, item.meta);
     }
   }
+
   onProgress && onProgress(0.99, 'MP4コンテナを出力中…');
   muxer.finalize();
   if (J.glyphs && J.glyphs.clear) J.glyphs.clear();
@@ -29793,7 +29824,10 @@ function renderTech() {
 function syncOut() {
   $('outAspect').value = S.project.aspect; $('outRes').value = String(S.project.res); $('outFps').value = String(S.project.fps);
   $('eAspect').value = S.project.aspect; $('eRes').value = String(S.project.res); $('eFps').value = String(S.project.fps);
-  $('outQuality').value = S.project.quality || 'high'; $('outAudio').checked = S.project.includeAudio !== false;
+  $('outQuality').value = S.project.quality || 'high';
+  const incA = S.project.includeAudio !== false;
+  $('outAudio').checked = incA;
+  if ($('eAudio')) $('eAudio').checked = incA;
   const k = J.keyMode(S.project) || 'off';
   $('outKey').value = k; $('eKey').value = k;
   const kb = $('keyBadge');
@@ -29812,7 +29846,7 @@ function baseName() {
   const k = J.keyMode(S.project);
   return ((S.project.title || 'jizura').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60) || 'jizura') + (k ? (k === 'green' ? '_greenback' : '_blackback') : '');
 }
-async function runExport(kind) {
+async function runExport(kind, opts = {}) {
   if (S.exporting) return;
   pause();
   const ac = new AbortController(); S.exporting = ac;
@@ -29832,7 +29866,15 @@ async function runExport(kind) {
   try {
     await J.ensureFonts(S.project.lyrics + (S.project.title || '') + (S.project.artist || '') + HUD_CHARS, J.fontsOfPlan(S.plan));
     if (kind === 'mp4') {
-      const r = await J.exportMP4({ plan: S.plan, project: S.project, audio: S.project.includeAudio !== false ? S.audio : null, quality: S.project.quality || 'high', onProgress, signal: ac.signal });
+      const hasAudio = !opts.skipAudio && S.project.includeAudio !== false && S.audio && S.audio.buffer;
+      const r = await J.exportMP4({
+        plan: S.plan,
+        project: S.project,
+        audio: hasAudio ? S.audio : null,
+        quality: S.project.quality || 'high',
+        onProgress,
+        signal: ac.signal
+      });
       const sizeMB = (r.blob.size / 1048576).toFixed(1);
       const elapsed = ((performance.now() - t0) / 1000).toFixed(0);
       txt.textContent = `Done: ${sizeMB}MB · ${r.codec}${r.audio ? ' + ' + r.audio.toUpperCase() : ''} · ${elapsed}s`;
@@ -29900,9 +29942,8 @@ async function runExport(kind) {
       const retryBtn = doneArea.querySelector('.btn-retry-no-audio');
       if (retryBtn) {
         retryBtn.onclick = () => {
-          S.project.includeAudio = false;
           doneArea.style.display = 'none';
-          runExport('mp4');
+          runExport('mp4', { skipAudio: true });
         };
       }
     });
@@ -30071,7 +30112,10 @@ function bind() {
     const k = J.keyMode(S.project);
     toast(k ? `Background：${k === 'green' ? 'Green screen' : 'Black background'}（white text and effects only）` : 'Background：Style colors');
   }));
-  $('outAudio').addEventListener('change', e => { S.project.includeAudio = e.target.checked; autosave(); });
+  ['outAudio', 'eAudio'].forEach(id => {
+    const el = $(id);
+    if (el) el.addEventListener('change', e => { S.project.includeAudio = e.target.checked; syncOut(); autosave(); });
+  });
   $('btnMP4').addEventListener('click', () => runExport('mp4'));
   $('btnPNG').addEventListener('click', () => runExport('png'));
   $('btnPNGA').addEventListener('click', () => runExport('pnga'));
@@ -30125,7 +30169,8 @@ async function loadAudioFile(f) {
     S.audio = await J.analyzeAudio(f);
     $('audioName').textContent = `${f.name}（${J.fmtTime(S.audio.duration)} · about ${S.audio.bpm}BPM）`;
     S.project.timing.snap = true;
-    syncUI(); replan();
+    S.project.includeAudio = true;
+    syncUI(); syncOut(); replan();
     return true;
   } catch (err) { $('audioName').textContent = 'Could not load: ' + err.message; S.audio = null; return false; }
 }

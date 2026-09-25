@@ -578,7 +578,10 @@ function renderTech() {
 function syncOut() {
   $('outAspect').value = S.project.aspect; $('outRes').value = String(S.project.res); $('outFps').value = String(S.project.fps);
   $('eAspect').value = S.project.aspect; $('eRes').value = String(S.project.res); $('eFps').value = String(S.project.fps);
-  $('outQuality').value = S.project.quality || 'high'; $('outAudio').checked = S.project.includeAudio !== false;
+  $('outQuality').value = S.project.quality || 'high';
+  const incA = S.project.includeAudio !== false;
+  $('outAudio').checked = incA;
+  if ($('eAudio')) $('eAudio').checked = incA;
   const k = J.keyMode(S.project) || 'off';
   $('outKey').value = k; $('eKey').value = k;
   const kb = $('keyBadge');
@@ -597,7 +600,7 @@ function baseName() {
   const k = J.keyMode(S.project);
   return ((S.project.title || 'jizura').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60) || 'jizura') + (k ? (k === 'green' ? '_greenback' : '_blackback') : '');
 }
-async function runExport(kind) {
+async function runExport(kind, opts = {}) {
   if (S.exporting) return;
   pause();
   const ac = new AbortController(); S.exporting = ac;
@@ -617,7 +620,15 @@ async function runExport(kind) {
   try {
     await J.ensureFonts(S.project.lyrics + (S.project.title || '') + (S.project.artist || '') + HUD_CHARS, J.fontsOfPlan(S.plan));
     if (kind === 'mp4') {
-      const r = await J.exportMP4({ plan: S.plan, project: S.project, audio: S.project.includeAudio !== false ? S.audio : null, quality: S.project.quality || 'high', onProgress, signal: ac.signal });
+      const hasAudio = !opts.skipAudio && S.project.includeAudio !== false && S.audio && S.audio.buffer;
+      const r = await J.exportMP4({
+        plan: S.plan,
+        project: S.project,
+        audio: hasAudio ? S.audio : null,
+        quality: S.project.quality || 'high',
+        onProgress,
+        signal: ac.signal
+      });
       const sizeMB = (r.blob.size / 1048576).toFixed(1);
       const elapsed = ((performance.now() - t0) / 1000).toFixed(0);
       txt.textContent = `完成 ${sizeMB}MB・${r.codec}${r.audio ? ' + ' + r.audio.toUpperCase() : ''}・${elapsed}秒`;
@@ -685,9 +696,8 @@ async function runExport(kind) {
       const retryBtn = doneArea.querySelector('.btn-retry-no-audio');
       if (retryBtn) {
         retryBtn.onclick = () => {
-          S.project.includeAudio = false;
           doneArea.style.display = 'none';
-          runExport('mp4');
+          runExport('mp4', { skipAudio: true });
         };
       }
     });
@@ -856,7 +866,10 @@ function bind() {
     const k = J.keyMode(S.project);
     toast(k ? `背景：${k === 'green' ? 'グリーンバック' : 'ブラックバック'}（白い文字と演出だけ）` : '背景：通常（スタイルの配色）');
   }));
-  $('outAudio').addEventListener('change', e => { S.project.includeAudio = e.target.checked; autosave(); });
+  ['outAudio', 'eAudio'].forEach(id => {
+    const el = $(id);
+    if (el) el.addEventListener('change', e => { S.project.includeAudio = e.target.checked; syncOut(); autosave(); });
+  });
   $('btnMP4').addEventListener('click', () => runExport('mp4'));
   $('btnPNG').addEventListener('click', () => runExport('png'));
   $('btnPNGA').addEventListener('click', () => runExport('pnga'));
@@ -910,7 +923,8 @@ async function loadAudioFile(f) {
     S.audio = await J.analyzeAudio(f);
     $('audioName').textContent = `${f.name}（${J.fmtTime(S.audio.duration)}・約${S.audio.bpm}BPM）`;
     S.project.timing.snap = true;
-    syncUI(); replan();
+    S.project.includeAudio = true;
+    syncUI(); syncOut(); replan();
     return true;
   } catch (err) { $('audioName').textContent = '読み込めませんでした: ' + err.message; S.audio = null; return false; }
 }
