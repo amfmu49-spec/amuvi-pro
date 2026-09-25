@@ -529,7 +529,7 @@ SOFTWARE.
     <button value="close" style="background:#334155; color:#fff; border:none; border-radius:8px; padding:6px 12px; cursor:pointer;">Close</button>
   </form>
   <p style="font-size:14px; margin-bottom:16px;">以下のコードをコピーして、ブラウザのブックマークのURLに登録してください。<br>Sunoの楽曲ページで実行すると、SRTLyricsと音源がAutoでLYRIMOに読み込まれます。</p>
-  <textarea id="bmCode" readonly style="width:100%; height:100px; background:#0f172a; color:#22c55e; border:1px solid #334155; border-radius:8px; padding:12px; font-family:monospace; font-size:12px; margin-bottom:12px; resize:none;">javascript:(function(){var s=document.createElement('script');s.src='https://amfmu49-spec.github.io/amuvi-pro/bookmarklet.js?t='+Date.now();document.body.appendChild(s);})();</textarea>
+  <textarea id="bmCode" readonly style="width:100%; height:100px; background:#0f172a; color:#22c55e; border:1px solid #334155; border-radius:8px; padding:12px; font-family:monospace; font-size:12px; margin-bottom:12px; resize:none;">javascript:(function(){var s=document.createElement('script');s.src='https://amfmu49-spec.github.io/lyrimo/bookmarklet.js?t='+Date.now();document.body.appendChild(s);})();</textarea>
   <button onclick="navigator.clipboard.writeText(document.getElementById('bmCode').value); this.textContent='✅ コピーしました！'; setTimeout(() => this.textContent='📋 コピー', 2000)" style="width:100%; background:#8b5cf6; color:#fff; border:none; border-radius:8px; padding:12px; font-size:14px; font-weight:bold; cursor:pointer;">📋 コピー</button>
 </dialog>
 
