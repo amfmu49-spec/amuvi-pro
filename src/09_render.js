@@ -75,8 +75,12 @@ class Renderer {
     // ---------- background ----------
     const key = plan.keyBg && J.KEY_BG && J.KEY_BG[plan.keyBg] ? plan.keyBg : null;   // 合成用: white-on-black, finished in keyFinish()
     if (key && !opt.transparent) { ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, W, H); }
-    else if (!opt.transparent) {\n      if (window._bgImgObj) { ctx.drawImage(window._bgImgObj, 0, 0, W, H); } else 
-      ctx.fillStyle = sc.bg; ctx.fillRect(0, 0, W, H);
+    else if (!opt.transparent) {
+      if (window._bgImgObj) {
+        ctx.drawImage(window._bgImgObj, 0, 0, W, H);
+      } else {
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
+      }
       const g = ctx.createRadialGradient(W / 2, H * 0.45, 0, W / 2, H / 2, Math.hypot(W, H) * 0.6);
       const lift = J.lum(sc.bg) < 0.5 ? 'rgba(255,255,255,0.045)' : 'rgba(255,255,255,0.10)';
       g.addColorStop(0, lift); g.addColorStop(1, 'rgba(0,0,0,0)');
