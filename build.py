@@ -11,7 +11,7 @@ js = '\n'.join(read(f) for f in sources)
 mux = '/*! mp4-muxer v5.2.2 | MIT License | (c) 2023 Vanilagy | see THIRD_PARTY_NOTICES.md */\n' + read('vendor/mp4-muxer.min.js')
 def build(lang):
     english = lang == 'en'
-    title = 'AMUVI PRO v2.8 — Lyric Motion Video Maker' if english else 'AMUVI PRO v2.8 (JIZURA)'
+    title = 'AMUVI PRO v2.9 — Lyric Motion Video Maker' if english else 'AMUVI PRO v2.9 (JIZURA)'
     description = ('Turn lyrics into animated lyric videos in your browser and export MP4.' if english else '歌詞を入れると文字PV（リリックモーション）を自動で組み立てて MP4 に書き出すブラウザアプリ')
     canonical = 'https://852wa.github.io/JIZURA/en/' if english else 'https://852wa.github.io/JIZURA/'
     language_nav = ('<nav class="lang-switch" aria-label="Language"><a href="../index.html" lang="ja">日本語</a><span aria-current="page">English</span></nav>' if english else '<nav class="lang-switch" aria-label="言語"><span aria-current="page">日本語</span><a href="en/index.html" lang="en">English</a></nav>')
