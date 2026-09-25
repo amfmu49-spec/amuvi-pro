@@ -62,16 +62,21 @@ async function resample(buffer, sr, duration) {
 
 /* ---------- MP4 ---------- */
 J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signal }) => {
+  const isMobile = J.isMobile && J.isMobile();
   const [w, h] = J.outputSize(project);
   const fps = plan.fps;
   const px = w * h * fps;
-  const bitrate = Math.round(px * (quality === 'max' ? 0.42 : quality === 'high' ? 0.28 : 0.16));
+  const bitrateScale = isMobile ? (quality === 'max' ? 0.28 : quality === 'high' ? 0.18 : 0.12) : (quality === 'max' ? 0.38 : quality === 'high' ? 0.25 : 0.15);
+  const bitrate = Math.round(px * bitrateScale);
   const vc = await J.pickVideoCodec(w, h, fps, bitrate);
   if (!vc) throw new Error('このブラウザは動画エンコード（WebCodecs）に対応していません。Chrome か Edge の最新版で開いてください。');
   let ac = null;
   if (audio && audio.buffer && project.includeAudio !== false) ac = await J.pickAudioCodec(48000, Math.min(2, audio.buffer.numberOfChannels));
+  
+  // fastStart: false writes compressed chunks directly to target and frees chunk memory immediately,
+  // preventing browser out-of-memory tab reloads on smartphones.
   const target = new Mp4Muxer.ArrayBufferTarget();
-  const muxOpts = { target, video: { codec: vc.mux, width: w, height: h, frameRate: fps }, fastStart: 'in-memory', firstTimestampBehavior: 'offset' };
+  const muxOpts = { target, video: { codec: vc.mux, width: w, height: h, frameRate: fps }, fastStart: false, firstTimestampBehavior: 'offset' };
   if (ac) muxOpts.audio = { codec: ac.mux, numberOfChannels: 2, sampleRate: ac.sr };
   const muxer = new Mp4Muxer.Muxer(muxOpts);
   let err = null;
@@ -84,13 +89,16 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
   delete vencCfg.latencyMode;
   venc.configure(vencCfg);
 
+  if (J.glyphs && J.glyphs.clear) J.glyphs.clear();
   const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext('2d', { alpha: false });
   const R = new J.Renderer();
   const total = Math.max(1, Math.round(plan.duration * fps));
   const scale = w / plan.W;
-  const prevRes = J.glyphs.maxRes; J.glyphs.maxRes = h >= 1000 ? 768 : 512;
+  const prevRes = J.glyphs.maxRes;
+  J.glyphs.maxRes = isMobile ? 384 : (h >= 1000 ? 512 : 384);
   try {
+    const maxVencQueue = isMobile ? 2 : 4;
     for (let i = 0; i < total; i++) {
       if (signal && signal.aborted) { try { venc.close(); } catch (e) {} throw new Error('キャンセルしました'); }
       if (err) throw err;
@@ -98,16 +106,21 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
       const vf = new VideoFrame(canvas, { timestamp: Math.round(i * 1e6 / fps), duration: Math.round(1e6 / fps) });
       venc.encode(vf, { keyFrame: i % (fps * 2) === 0 });
       vf.close();
-      while (venc.encodeQueueSize > 6) {
+      while (venc.encodeQueueSize > maxVencQueue) {
         if (err) throw err;
-        await new Promise(r => setTimeout(r, 4));
+        await new Promise(r => setTimeout(r, 6));
       }
-      if (i % 3 === 0 || i === total - 1) {
+      if (i % (isMobile ? 1 : 3) === 0 || i === total - 1) {
         onProgress && onProgress((i + 1) / total * 0.95, `映像フレーム ${i + 1}/${total}`);
-        await new Promise(r => setTimeout(r, 0));
+        // Yield execution to allow mobile browser garbage collection
+        await new Promise(r => setTimeout(r, isMobile ? 6 : 0));
       }
     }
-  } finally { J.glyphs.maxRes = prevRes; }
+  } finally {
+    J.glyphs.maxRes = prevRes;
+    // Release drawing canvas memory immediately
+    canvas.width = 1; canvas.height = 1;
+  }
 
   onProgress && onProgress(0.96, '映像を完了処理中…');
   while (venc.encodeQueueSize > 0) {
@@ -140,25 +153,28 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
       const frameUnit = ac.mux === 'opus' ? 960 : 1024;
       const block = frameUnit * 4;
       const frames = rs.length;
+      const maxPadFrames = block + frameUnit;
+      const dataBuffer = new Float32Array(maxPadFrames * chn);
       for (let off = 0; off < frames; off += block) {
         if (aerr) throw aerr;
         const n = Math.min(block, frames - off);
         const padFrames = (n % frameUnit === 0) ? n : Math.ceil(n / frameUnit) * frameUnit;
-        const data = new Float32Array(padFrames * chn);
+        dataBuffer.fill(0, 0, padFrames * chn);
         for (let c = 0; c < chn; c++) {
-          data.set(rs.getChannelData(c).subarray(off, off + n), c * padFrames);
+          dataBuffer.set(rs.getChannelData(c).subarray(off, off + n), c * padFrames);
         }
+        const frameData = dataBuffer.subarray(0, padFrames * chn);
         const ad = new AudioData({
           format: 'f32-planar',
           sampleRate: ac.sr,
           numberOfFrames: padFrames,
           numberOfChannels: chn,
           timestamp: Math.round(off * 1e6 / ac.sr),
-          data
+          data: frameData
         });
         aenc.encode(ad);
         ad.close();
-        while (aenc.encodeQueueSize > 8) {
+        while (aenc.encodeQueueSize > (isMobile ? 2 : 6)) {
           if (aerr) throw aerr;
           await new Promise(r => setTimeout(r, 4));
         }
@@ -180,6 +196,7 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
   }
   onProgress && onProgress(0.99, 'MP4コンテナを出力中…');
   muxer.finalize();
+  if (J.glyphs && J.glyphs.clear) J.glyphs.clear();
   onProgress && onProgress(1, '完了');
   return {
     blob: new Blob([target.buffer], { type: 'video/mp4' }),

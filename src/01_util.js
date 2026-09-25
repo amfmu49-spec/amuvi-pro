@@ -10,6 +10,10 @@ J.inv = (a, b, x) => (b === a ? 0 : (x - a) / (b - a));
 J.smooth = (a, b, x) => { const t = J.clamp(J.inv(a, b, x)); return t * t * (3 - 2 * t); };
 J.TAU = Math.PI * 2;
 J.DEG = Math.PI / 180;
+J.isMobile = () => {
+  if (typeof navigator === 'undefined') return false;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/i.test(navigator.userAgent));
+};
 
 J.E = {
   lin: x => J.clamp(x),

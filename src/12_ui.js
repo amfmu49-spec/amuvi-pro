@@ -49,6 +49,10 @@ function initVolume() {
 /* ---------------- project persistence ---------------- */
 function mergeProject(p) {
   const d = J.defaultProject();
+  if (J.isMobile && J.isMobile() && (!p || !p.res)) {
+    d.res = 720;
+    d.aspect = '9:16';
+  }
   const o = Object.assign(d, p || {});
   o.fx = Object.assign(J.defaultProject().fx, (p && p.fx) || {});
   o.timing = Object.assign(J.defaultProject().timing, (p && p.timing) || {});
@@ -642,7 +646,7 @@ async function runExport(kind) {
               </a>
             </div>
             <div style="margin-top:10px;">
-              <video controls src="${blobUrl}" style="width:100%; max-height:220px; border-radius:6px; background:#000;"></video>
+              <video controls preload="metadata" playsinline src="${blobUrl}" style="width:100%; max-height:220px; border-radius:6px; background:#000;"></video>
             </div>
           </div>
         `;
