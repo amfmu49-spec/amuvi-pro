@@ -83,6 +83,12 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
   if (!vc) throw new Error('このブラウザは動画エンコード（WebCodecs）に対応していません。Chrome か Edge の最新版で開いてください。');
   let ac = null;
   if (audio && audio.buffer && project.includeAudio !== false) ac = await J.pickAudioCodec(48000, Math.min(2, audio.buffer.numberOfChannels));
+
+  // If audio is requested but AudioEncoder is unavailable, delegate to MediaRecorder real-time fallback
+  const wantsAudio = audio && audio.buffer && project.includeAudio !== false;
+  if (wantsAudio && !ac && typeof MediaRecorder !== 'undefined' && typeof HTMLCanvasElement !== 'undefined' && typeof HTMLCanvasElement.prototype.captureStream === 'function') {
+    return J.exportMP4_realtime({ plan, project, audio, quality, onProgress, signal });
+  }
   
   // fastStart: false writes compressed chunks directly to target and frees chunk memory immediately,
   // preventing browser out-of-memory tab reloads on smartphones.
@@ -131,6 +137,16 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
       let aerr = null;
       const aenc = new AudioEncoder({
         output: (chunk, meta) => {
+          // Safari / Android workaround: force AAC decoderConfig if missing
+          if (!meta) meta = {};
+          if (!meta.decoderConfig && ac.mux === 'aac') {
+            meta.decoderConfig = {
+              codec: ac.codec,
+              sampleRate: ac.sr,
+              numberOfChannels: chn,
+              description: new Uint8Array([ac.sr === 48000 ? 0x13 : 0x12, 0x10])
+            };
+          }
           audioChunks.push({ chunk, meta });
         },
         error: e => { console.error('AudioEncoder error:', e); aerr = e; }
@@ -256,6 +272,161 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
     width: w,
     height: h
   };
+};
+
+/* ---------- MediaRecorder fallback for mobile (real-time recording with audio) ---------- */
+J.exportMP4_realtime = async ({ plan, project, audio, quality = 'high', onProgress, signal }) => {
+  if (typeof MediaRecorder === 'undefined') throw new Error('MediaRecorderに非対応です');
+  const [w, h] = J.outputSize(project);
+  const fps = plan.fps;
+  const duration = plan.duration;
+  const total = Math.max(1, Math.round(duration * fps));
+  const scale = w / plan.W;
+
+  // Canvas + renderer setup
+  if (J.glyphs && J.glyphs.clear) J.glyphs.clear();
+  const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const R = new J.Renderer();
+  const prevRes = J.glyphs.maxRes;
+  J.glyphs.maxRes = 384;
+
+  // Render first frame before starting capture (so stream has initial content)
+  R.frame(ctx, plan, 0, { scale });
+
+  // Video stream from canvas — automatic capture at fps
+  const videoStream = canvas.captureStream(fps);
+
+  // Audio stream via Web Audio → MediaStreamDestination
+  let audioCtx, audioDest, audioSrc;
+  let audioIncluded = false;
+  let combinedStream = videoStream;
+  const hasAudioSource = audio && audio.buffer && project.includeAudio !== false;
+
+  if (hasAudioSource) {
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      audioDest = audioCtx.createMediaStreamDestination();
+      combinedStream = new MediaStream([
+        ...videoStream.getVideoTracks(),
+        ...audioDest.stream.getAudioTracks()
+      ]);
+      audioIncluded = true;
+    } catch (e) {
+      console.warn('Audio stream setup failed:', e);
+      combinedStream = videoStream;
+    }
+  }
+
+  // Choose codec — prefer MP4 (Safari), fall back to WebM (Chrome Android)
+  const px = w * h * fps;
+  const bitrateScale = quality === 'max' ? 0.28 : quality === 'high' ? 0.18 : 0.12;
+  const bitrate = Math.round(px * bitrateScale);
+  let mimeType = '';
+  for (const mt of [
+    'video/mp4; codecs="avc1.42E01E, mp4a.40.2"',
+    'video/mp4; codecs="avc1.42E01E"',
+    'video/mp4',
+    'video/webm; codecs="vp9,opus"',
+    'video/webm; codecs="vp8,opus"',
+    'video/webm'
+  ]) {
+    if (MediaRecorder.isTypeSupported(mt)) { mimeType = mt; break; }
+  }
+  if (!mimeType) throw new Error('対応する動画形式が見つかりません');
+  const isMP4 = mimeType.startsWith('video/mp4');
+
+  const chunks = [];
+  const recOpts = { mimeType, videoBitsPerSecond: bitrate };
+  if (audioIncluded) recOpts.audioBitsPerSecond = 128000;
+  const recorder = new MediaRecorder(combinedStream, recOpts);
+  recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+
+  // WakeLock — prevent screen dimming during real-time recording
+  let wakeLock = null;
+  if ('wakeLock' in navigator) {
+    try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { /* non-critical */ }
+  }
+
+  return new Promise((resolve, reject) => {
+    let stopped = false;
+    const cleanup = () => {
+      J.glyphs.maxRes = prevRes;
+      canvas.width = 1; canvas.height = 1;
+      if (audioCtx) try { audioCtx.close(); } catch (e) {}
+      if (J.glyphs && J.glyphs.clear) J.glyphs.clear();
+      if (wakeLock) try { wakeLock.release(); } catch (e) {}
+    };
+
+    if (signal) signal.addEventListener('abort', () => {
+      stopped = true;
+      if (audioSrc) try { audioSrc.stop(); } catch (e) {}
+      try { recorder.stop(); } catch (e) {}
+      cleanup();
+      reject(new Error('キャンセルしました'));
+    }, { once: true });
+
+    recorder.onerror = e => { stopped = true; cleanup(); reject(e.error || e); };
+    recorder.onstop = () => {
+      cleanup();
+      const blob = new Blob(chunks, { type: isMP4 ? 'video/mp4' : 'video/webm' });
+      onProgress && onProgress(1, '完了');
+      resolve({
+        blob,
+        ext: isMP4 ? 'mp4' : 'webm',
+        codec: (isMP4 ? 'H.264' : 'VP9') + ' (リアルタイム録画)',
+        audio: audioIncluded ? (isMP4 ? 'aac' : 'opus') : null,
+        audioLabel: audioIncluded ? (isMP4 ? 'AAC' : 'Opus') : null,
+        notice: '',
+        noAudioReason: audioIncluded ? '' : (hasAudioSource ? '音声ストリーム作成失敗' : '楽曲ファイルが読み込まれていません'),
+        width: w, height: h
+      });
+    };
+
+    // Start recording
+    recorder.start(1000);
+
+    // Start audio playback into MediaStreamDestination
+    if (audioIncluded && audioCtx) {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      audioSrc = audioCtx.createBufferSource();
+      audioSrc.buffer = audio.buffer;
+      audioSrc.connect(audioDest);
+      audioSrc.start(0);
+    }
+
+    // Real-time rendering loop — render at actual wall-clock time
+    const startTime = performance.now();
+    let lastFrame = -1;
+
+    function loop() {
+      if (stopped) return;
+      const elapsed = (performance.now() - startTime) / 1000;
+      const targetFrame = Math.min(Math.floor(elapsed * fps), total - 1);
+
+      if (targetFrame > lastFrame) {
+        R.frame(ctx, plan, targetFrame / fps, { scale });
+        lastFrame = targetFrame;
+        const elapsedS = Math.floor(elapsed);
+        const totalS = Math.ceil(duration);
+        onProgress && onProgress((targetFrame / total) * 0.98, `リアルタイム録画中… ${elapsedS}秒 / ${totalS}秒`);
+      }
+
+      if (elapsed < duration + 0.05) {
+        requestAnimationFrame(loop);
+      } else {
+        // Render final frame
+        if (lastFrame < total - 1) R.frame(ctx, plan, (total - 1) / fps, { scale });
+        onProgress && onProgress(0.99, '録画を終了中…');
+        if (audioSrc) try { audioSrc.stop(); } catch (e) {}
+        // Short delay to ensure MediaRecorder captures final data
+        setTimeout(() => {
+          if (!stopped) { stopped = true; try { recorder.stop(); } catch (e) {} }
+        }, 500);
+      }
+    }
+    requestAnimationFrame(loop);
+  });
 };
 
 /* ---------- PNG sequence as ZIP (store, no compression) ---------- */

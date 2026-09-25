@@ -591,7 +591,11 @@ function syncOut() {
   const noteEl = $('eAudioNote');
   if (noteEl) {
     if (typeof AudioEncoder === 'undefined') {
-      noteEl.innerHTML = '<span style="color:#f59e0b; font-weight:700;">⚠️ お使いの端末（iOS Safari等）は音声出力非対応です</span><br><span style="color:#cbd5e1; font-size:11px;">Appleの仕様制限により本端末では【映像のみ】書き出されます。音声付きで動画を書き出すには、PC（Google ChromeまたはMicrosoft Edge）からご利用ください。</span>';
+      if (typeof MediaRecorder !== 'undefined' && typeof HTMLCanvasElement !== 'undefined' && typeof HTMLCanvasElement.prototype.captureStream === 'function') {
+        noteEl.innerHTML = '<span style="color:#f59e0b; font-weight:700;">⚠️ リアルタイム録画モードで出力されます</span><br><span style="color:#cbd5e1; font-size:11px;">この端末は高速出力非対応のため、曲を再生しながら録画する方式（曲と同じ時間がかかります）で音声付き動画を出力します。</span>';
+      } else {
+        noteEl.innerHTML = '<span style="color:#f59e0b; font-weight:700;">⚠️ お使いの端末（iOS Safari等）は音声出力非対応です</span><br><span style="color:#cbd5e1; font-size:11px;">Appleの仕様制限により本端末では【映像のみ】書き出されます。音声付きで動画を書き出すには、PC（Google ChromeまたはMicrosoft Edge）からご利用ください。</span>';
+      }
     } else if (!S.audio || !S.audio.buffer) {
       noteEl.innerHTML = '<span style="color:#f59e0b; font-weight:700;">⚠️ 楽曲が未設定です（無音出力モード）</span><br><span style="color:#cbd5e1; font-size:11px;">上の「🎵 曲を読み込む」から音楽ファイルを選択すると、動画に音声を結合できます。</span>';
     } else if (!incA) {
@@ -626,8 +630,14 @@ async function runExport(kind, opts = {}) {
         return;
       }
     } else if (wantsAudio && typeof AudioEncoder === 'undefined') {
-      const ok = confirm("【お使いの端末・ブラウザに関する重要なお知らせ】\n\n現在ご利用の端末・ブラウザ（iPhone / iPad Safari等）は、Appleの仕様制限によりブラウザ内での動画音声エンコード（AudioEncoder）に対応していません。\nそのため、この端末では【映像のみ（無音）】での書き出しとなります。\n\n※音声付きのMP4動画を出力するには、PC（Google ChromeまたはMicrosoft Edge）から本サイトを開いて書き出しを行ってください。\n\nこのまま映像のみで出力しますか？");
-      if (!ok) return;
+      if (typeof MediaRecorder !== 'undefined' && typeof HTMLCanvasElement !== 'undefined' && typeof HTMLCanvasElement.prototype.captureStream === 'function') {
+        const durMin = Math.ceil((S.plan.duration || 60) / 60);
+        const ok = confirm(`【リアルタイム録画モード】\n\nお使いの端末は高速音声エンコードに非対応のため、リアルタイム録画で音声付き動画を出力します。\n\n・録画時間: 約${durMin}分（曲と同じ長さかかります）\n・お願い: 録画中は画面を消したり別のアプリを開いたりしないでください。\n\n録画を開始しますか？`);
+        if (!ok) return;
+      } else {
+        const ok = confirm("【お使いの端末・ブラウザに関する重要なお知らせ】\n\n現在ご利用の端末・ブラウザ（iPhone / iPad Safari等）は、Appleの仕様制限によりブラウザ内での動画音声エンコード（AudioEncoder）に対応していません。\nそのため、この端末では【映像のみ（無音）】での書き出しとなります。\n\n※音声付きのMP4動画を出力するには、PC（Google ChromeまたはMicrosoft Edge）から本サイトを開いて書き出しを行ってください。\n\nこのまま映像のみで出力しますか？");
+        if (!ok) return;
+      }
     }
   }
 
@@ -662,7 +672,8 @@ async function runExport(kind, opts = {}) {
       const elapsed = ((performance.now() - t0) / 1000).toFixed(0);
       txt.textContent = `完成 ${sizeMB}MB・${r.codec}${r.audio ? ' + ' + (r.audioLabel || r.audio.toUpperCase()) : ''}・${elapsed}秒`;
       
-      const fileName = baseName() + '.mp4';
+      const ext = r.ext || 'mp4';
+      const fileName = baseName() + '.' + ext;
       const blobUrl = URL.createObjectURL(r.blob);
       
       boxes.forEach(b => {
