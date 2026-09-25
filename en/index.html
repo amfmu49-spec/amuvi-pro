@@ -288,9 +288,11 @@ body {
 <body>
 <div id="app" class="amuvi-pro">
   <header class="bar amuvi-header">
-    <div class="brand">
-      <span class="word amuvi-title">LYRIMO</span>
+    <div class="brand" style="display:flex; align-items:center; gap:8px;">
+      <img src="logo.png" alt="LYRIMO" style="height:28px;">
       <span class="amuvi-version" style="font-size:11px; font-weight:700; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; border-radius:10px; padding:2px 8px; margin-left:8px; vertical-align:middle; letter-spacing:0.5px; box-shadow:0 2px 6px rgba(99,102,241,0.3);">v2.9.8</span>
+      <button onclick="document.getElementById('licenseModal').showModal()" style="background:none; border:none; cursor:pointer; color:#94a3b8; font-size:16px; margin-left:12px; padding:4px;" title="license情報">ℹ️</button>
+      <button onclick="document.getElementById('bookmarkletModal').showModal()" style="background:none; border:none; cursor:pointer; font-size:16px; padding:4px;" title="ブックマークレット">🔖</button>
     </div>
     <div class="proj" style="display:none;">
       <input id="songTitle" type="text" placeholder="Song title">
@@ -487,6 +489,48 @@ body {
 <!-- Modal hidden -->
 <dialog id="termsDlg" class="terms" style="display:none;">
   <form method="dialog"><h2 id="termsTitle"></h2><button value="close" id="termsCloseBtn"></button></form>
+</dialog>
+
+<!-- License Modal -->
+<dialog id="licenseModal" style="background:#1e293b; color:#fff; border:1px solid #334155; border-radius:12px; padding:24px; max-width:600px; max-height:80vh; overflow-y:auto; box-shadow:0 10px 30px rgba(0,0,0,0.5);">
+  <form method="dialog" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <h3 style="margin:0; font-size:18px;">license情報 (Licenses)</h3>
+    <button value="close" style="background:#334155; color:#fff; border:none; border-radius:8px; padding:6px 12px; cursor:pointer;">Close</button>
+  </form>
+  <div style="font-size:12px; line-height:1.5; color:#cbd5e1; white-space:pre-wrap; background:#0f172a; padding:16px; border-radius:8px; border:1px solid #1e293b;">
+MIT License
+
+Copyright (c) 2026 hakoniwa
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+  </div>
+</dialog>
+
+<!-- Bookmarklet Modal -->
+<dialog id="bookmarkletModal" style="background:#1e293b; color:#fff; border:1px solid #334155; border-radius:12px; padding:24px; max-width:500px; box-shadow:0 10px 30px rgba(0,0,0,0.5);">
+  <form method="dialog" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <h3 style="margin:0; font-size:18px;">🔖 LYRIMO ブックマークレット</h3>
+    <button value="close" style="background:#334155; color:#fff; border:none; border-radius:8px; padding:6px 12px; cursor:pointer;">Close</button>
+  </form>
+  <p style="font-size:14px; margin-bottom:16px;">以下のコードをコピーして、ブラウザのブックマークのURLに登録してください。<br>Sunoの楽曲ページで実行すると、SRTLyricsと音源がAutoでLYRIMOに読み込まれます。</p>
+  <textarea id="bmCode" readonly style="width:100%; height:100px; background:#0f172a; color:#22c55e; border:1px solid #334155; border-radius:8px; padding:12px; font-family:monospace; font-size:12px; margin-bottom:12px; resize:none;">javascript:(function(){var s=document.createElement('script');s.src='https://amfmu49-spec.github.io/amuvi-pro/bookmarklet.js?t='+Date.now();document.body.appendChild(s);})();</textarea>
+  <button onclick="navigator.clipboard.writeText(document.getElementById('bmCode').value); this.textContent='✅ コピーしました！'; setTimeout(() => this.textContent='📋 コピー', 2000)" style="width:100%; background:#8b5cf6; color:#fff; border:none; border-radius:8px; padding:12px; font-size:14px; font-weight:bold; cursor:pointer;">📋 コピー</button>
 </dialog>
 
 <script>
