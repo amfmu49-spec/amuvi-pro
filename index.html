@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>AMUVI PRO v2.9.7 (JIZURA)</title>
+<title>AMUVI PRO v2.9.8 (JIZURA)</title>
 <meta name="description" content="歌詞を入れると文字PV（リリックモーション）を自動で組み立てて MP4 に書き出すブラウザアプリ">
 <link rel="canonical" href="https://852wa.github.io/JIZURA/">
 <link rel="alternate" hreflang="ja" href="https://852wa.github.io/JIZURA/">
 <link rel="alternate" hreflang="en" href="https://852wa.github.io/JIZURA/en/">
 <meta property="og:type" content="website">
-<meta property="og:title" content="AMUVI PRO v2.9.7 (JIZURA)">
+<meta property="og:title" content="AMUVI PRO v2.9.8 (JIZURA)">
 <meta property="og:description" content="歌詞を入れると文字PV（リリックモーション）を自動で組み立てて MP4 に書き出すブラウザアプリ">
 <meta property="og:url" content="https://852wa.github.io/JIZURA/">
 <meta name="twitter:card" content="summary">
@@ -290,7 +290,7 @@ body {
   <header class="bar amuvi-header">
     <div class="brand">
       <span class="word amuvi-title">AMUVI PRO</span>
-      <span class="amuvi-version" style="font-size:11px; font-weight:700; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; border-radius:10px; padding:2px 8px; margin-left:8px; vertical-align:middle; letter-spacing:0.5px; box-shadow:0 2px 6px rgba(99,102,241,0.3);">v2.9.7</span>
+      <span class="amuvi-version" style="font-size:11px; font-weight:700; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; border-radius:10px; padding:2px 8px; margin-left:8px; vertical-align:middle; letter-spacing:0.5px; box-shadow:0 2px 6px rgba(99,102,241,0.3);">v2.9.8</span>
     </div>
     <div class="proj" style="display:none;">
       <input id="songTitle" type="text" placeholder="曲名">
@@ -3034,9 +3034,31 @@ J.stepDur = (fx, fps) => { const k = J.komaOf(fx); return k > 0 ? 1 / k : 1 / (f
 
 /* ---------------- lyric parsing ---------------- */
 J.parseLyrics = (raw) => {
+  let text = String(raw || '').replace(/\r/g, '');
+  // Auto-convert SRT to LRC
+  if (text.includes('-->')) {
+    const srtBlocks = text.split(/\n\s*\n/);
+    const lrcLines = [];
+    for (const block of srtBlocks) {
+      const lines = block.trim().split('\n');
+      if (lines.length >= 3) {
+        const timeLine = lines[1];
+        const m = timeLine.match(/(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->/);
+        if (m) {
+          const min = parseInt(m[2], 10) + parseInt(m[1], 10) * 60;
+          const sec = m[3];
+          const ms = m[4].slice(0, 2);
+          const lyricText = lines.slice(2).join(' ');
+          lrcLines.push(`[${min.toString().padStart(2, '0')}:${sec}.${ms}]${lyricText}`);
+        }
+      }
+    }
+    if (lrcLines.length) text = lrcLines.join('\n');
+  }
+
   const lines = []; const meta = {};
   let pendingGap = false;
-  for (let src of String(raw || '').replace(/\r/g, '').split('\n')) {
+  for (let src of text.split('\n')) {
     const s0 = src.trim();
     if (!s0) { if (lines.length) pendingGap = true; continue; }
     if (s0.startsWith('#')) continue;
@@ -30189,6 +30211,29 @@ function boot() {
   bind(); initVolume(); syncUI(); replan();
   let mode = 'easy'; try { mode = localStorage.getItem('jizura.mode') || 'easy'; } catch (e) {}
   setMode(mode); commit();
+  
+  // Parse bookmarklet URL hash
+  const hash = window.location.hash.substring(1);
+  if (hash) {
+    const params = new URLSearchParams(hash);
+    const lrc = params.get('lrc');
+    const audioUrl = params.get('audio_url');
+    if (lrc) {
+      S.project.lyrics = lrc;
+      $('lyrics').value = lrc;
+      syncUI(); replan(); flushSave();
+      toast('歌詞を読み込みました');
+    }
+    if (audioUrl) {
+      toast('音源をダウンロード中…');
+      fetch(audioUrl).then(r => r.blob()).then(blob => {
+        const file = new File([blob], 'suno_audio.mp3', { type: 'audio/mpeg' });
+        loadAudioFile(file);
+      }).catch(e => toast('音源の取得に失敗しました'));
+    }
+    window.location.hash = '';
+  }
+
   // open on a representative frame (end of the first cut's entrance)
   const c0 = S.plan.cuts.find(c => c.line >= 0);
   if (c0) seek(c0.start + Math.min(c0.dur * 0.6, c0.inDur + 0.25));

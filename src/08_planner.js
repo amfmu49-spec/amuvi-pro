@@ -37,9 +37,31 @@ J.stepDur = (fx, fps) => { const k = J.komaOf(fx); return k > 0 ? 1 / k : 1 / (f
 
 /* ---------------- lyric parsing ---------------- */
 J.parseLyrics = (raw) => {
+  let text = String(raw || '').replace(/\r/g, '');
+  // Auto-convert SRT to LRC
+  if (text.includes('-->')) {
+    const srtBlocks = text.split(/\n\s*\n/);
+    const lrcLines = [];
+    for (const block of srtBlocks) {
+      const lines = block.trim().split('\n');
+      if (lines.length >= 3) {
+        const timeLine = lines[1];
+        const m = timeLine.match(/(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->/);
+        if (m) {
+          const min = parseInt(m[2], 10) + parseInt(m[1], 10) * 60;
+          const sec = m[3];
+          const ms = m[4].slice(0, 2);
+          const lyricText = lines.slice(2).join(' ');
+          lrcLines.push(`[${min.toString().padStart(2, '0')}:${sec}.${ms}]${lyricText}`);
+        }
+      }
+    }
+    if (lrcLines.length) text = lrcLines.join('\n');
+  }
+
   const lines = []; const meta = {};
   let pendingGap = false;
-  for (let src of String(raw || '').replace(/\r/g, '').split('\n')) {
+  for (let src of text.split('\n')) {
     const s0 = src.trim();
     if (!s0) { if (lines.length) pendingGap = true; continue; }
     if (s0.startsWith('#')) continue;

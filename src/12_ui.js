@@ -984,6 +984,29 @@ function boot() {
   bind(); initVolume(); syncUI(); replan();
   let mode = 'easy'; try { mode = localStorage.getItem('jizura.mode') || 'easy'; } catch (e) {}
   setMode(mode); commit();
+  
+  // Parse bookmarklet URL hash
+  const hash = window.location.hash.substring(1);
+  if (hash) {
+    const params = new URLSearchParams(hash);
+    const lrc = params.get('lrc');
+    const audioUrl = params.get('audio_url');
+    if (lrc) {
+      S.project.lyrics = lrc;
+      $('lyrics').value = lrc;
+      syncUI(); replan(); flushSave();
+      toast('歌詞を読み込みました');
+    }
+    if (audioUrl) {
+      toast('音源をダウンロード中…');
+      fetch(audioUrl).then(r => r.blob()).then(blob => {
+        const file = new File([blob], 'suno_audio.mp3', { type: 'audio/mpeg' });
+        loadAudioFile(file);
+      }).catch(e => toast('音源の取得に失敗しました'));
+    }
+    window.location.hash = '';
+  }
+
   // open on a representative frame (end of the first cut's entrance)
   const c0 = S.plan.cuts.find(c => c.line >= 0);
   if (c0) seek(c0.start + Math.min(c0.dur * 0.6, c0.inDur + 0.25));
