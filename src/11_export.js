@@ -262,7 +262,7 @@ J.exportMP4 = async ({ plan, project, audio, quality = 'high', onProgress, signa
   if (audioIncluded) {
     while (audioChunkIdx < audioChunks.length) {
       const item = audioChunks[audioChunkIdx++];
-      muxer.addAudioChunk(item.chunk, item.meta);
+      muxer.addAudioChunkRaw(item.data, item.type, item.timestamp, item.duration, item.meta);
     }
   }
 
