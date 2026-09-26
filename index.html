@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>LYRIMO v3.0.5</title>
+<title>LYRIMO v3.0.6</title>
 <meta name="description" content="歌詞を入れると文字PV（リリックモーション）を自動で組み立てて MP4 に書き出すブラウザアプリ">
 <link rel="canonical" href="https://amfmu49-spec.github.io/lyrimo/">
 <link rel="alternate" hreflang="ja" href="https://amfmu49-spec.github.io/lyrimo/">
 <link rel="alternate" hreflang="en" href="https://amfmu49-spec.github.io/lyrimo/en/">
 <meta property="og:type" content="website">
-<meta property="og:title" content="LYRIMO v3.0.5">
+<meta property="og:title" content="LYRIMO v3.0.6">
 <meta property="og:description" content="歌詞を入れると文字PV（リリックモーション）を自動で組み立てて MP4 に書き出すブラウザアプリ">
 <meta property="og:url" content="https://amfmu49-spec.github.io/lyrimo/">
 <meta name="twitter:card" content="summary">
@@ -290,7 +290,7 @@ body {
   <header class="bar amuvi-header">
     <div class="brand" style="display:flex; align-items:center; gap:8px;">
       <img src="logo.png" alt="LYRIMO" style="height:48px;">
-      <span class="amuvi-version" style="font-size:11px; font-weight:700; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; border-radius:10px; padding:2px 8px; margin-left:8px; vertical-align:middle; letter-spacing:0.5px; box-shadow:0 2px 6px rgba(99,102,241,0.3);">v3.0.5</span>
+      <span class="amuvi-version" style="font-size:11px; font-weight:700; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; border-radius:10px; padding:2px 8px; margin-left:8px; vertical-align:middle; letter-spacing:0.5px; box-shadow:0 2px 6px rgba(99,102,241,0.3);">v3.0.6</span>
       <button onclick="document.getElementById('licenseModal').showModal()" style="background:none; border:none; cursor:pointer; color:#94a3b8; font-size:16px; margin-left:12px; padding:4px;" title="ライセンス情報">ℹ️</button>
       <button onclick="document.getElementById('bookmarkletModal').showModal()" style="background:none; border:none; cursor:pointer; font-size:16px; padding:4px;" title="ブックマークレット">🔖</button>
     </div>
@@ -523,14 +523,44 @@ SOFTWARE.
 </dialog>
 
 <!-- Bookmarklet Modal -->
-<dialog id="bookmarkletModal" style="background:#1e293b; color:#fff; border:1px solid #334155; border-radius:12px; padding:24px; max-width:500px; box-shadow:0 10px 30px rgba(0,0,0,0.5);">
+<dialog id="bookmarkletModal" style="background:#1e293b; color:#fff; border:1px solid #334155; border-radius:12px; padding:24px; max-width:540px; box-shadow:0 10px 30px rgba(0,0,0,0.5);">
   <form method="dialog" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
     <h3 style="margin:0; font-size:18px;">🔖 LYRIMO ブックマークレット</h3>
     <button value="close" style="background:#334155; color:#fff; border:none; border-radius:8px; padding:6px 12px; cursor:pointer;">閉じる</button>
   </form>
-  <p style="font-size:14px; margin-bottom:16px;">以下のコードをコピーして、ブラウザのブックマークのURLに登録してください。<br>Sunoの楽曲ページで実行すると、SRT歌詞と音源が自動でLYRIMOに読み込まれます。</p>
-  <textarea id="bmCode" readonly style="width:100%; height:100px; background:#0f172a; color:#22c55e; border:1px solid #334155; border-radius:8px; padding:12px; font-family:monospace; font-size:12px; margin-bottom:12px; resize:none;">javascript:(function(){var s=document.createElement('script');s.src='https://amfmu49-spec.github.io/lyrimo/bookmarklet.js?t='+Date.now();document.body.appendChild(s);})();</textarea>
-  <button onclick="navigator.clipboard.writeText(document.getElementById('bmCode').value); this.textContent='✅ コピーしました！'; setTimeout(() => this.textContent='📋 コピー', 2000)" style="width:100%; background:#8b5cf6; color:#fff; border:none; border-radius:8px; padding:12px; font-size:14px; font-weight:bold; cursor:pointer;">📋 コピー</button>
+
+  <div style="display:flex; gap:8px; margin-bottom:16px; border-bottom:1px solid #334155; padding-bottom:8px;">
+    <button id="tabBmSuno" type="button" onclick="switchBmTab('suno')" style="flex:1; padding:8px 12px; border-radius:8px; border:none; background:#6366f1; color:#fff; font-weight:bold; cursor:pointer; font-size:13px;">🎵 Suno 用</button>
+    <button id="tabBmMureka" type="button" onclick="switchBmTab('mureka')" style="flex:1; padding:8px 12px; border-radius:8px; border:none; background:#334155; color:#94a3b8; font-weight:bold; cursor:pointer; font-size:13px;">🎶 Mureka 用</button>
+  </div>
+
+  <div id="bmPaneSuno">
+    <p style="font-size:13px; color:#cbd5e1; margin-bottom:12px; line-height:1.5;">
+      Sunoの楽曲ページ（<code>suno.com/song/...</code>）で実行すると、SRT歌詞と音源が自動抽出され、LYRIMOに1タップで転送できます。
+    </p>
+    <textarea id="bmCodeSuno" readonly style="width:100%; height:75px; background:#0f172a; color:#22c55e; border:1px solid #334155; border-radius:8px; padding:10px; font-family:monospace; font-size:11px; margin-bottom:12px; resize:none;">javascript:(function(){var s=document.createElement('script');s.src='https://amfmu49-spec.github.io/lyrimo/bookmarklet.js?t='+Date.now();document.body.appendChild(s);})();</textarea>
+    <button type="button" onclick="navigator.clipboard.writeText(document.getElementById('bmCodeSuno').value); this.textContent='✅ Suno用をコピーしました！'; setTimeout(() => this.textContent='📋 Suno用コードをコピー', 2000)" style="width:100%; background:#6366f1; color:#fff; border:none; border-radius:8px; padding:10px; font-size:14px; font-weight:bold; cursor:pointer;">📋 Suno用コードをコピー</button>
+  </div>
+
+  <div id="bmPaneMureka" style="display:none;">
+    <p style="font-size:13px; color:#cbd5e1; margin-bottom:12px; line-height:1.5;">
+      Murekaの楽曲詳細ページ（<code>mureka.ai/song-detail/...</code>）で実行すると、高精度なSRT歌詞と音源を抽出し、LYRIMOへ自動読み込みできます。
+    </p>
+    <textarea id="bmCodeMureka" readonly style="width:100%; height:75px; background:#0f172a; color:#38bdf8; border:1px solid #334155; border-radius:8px; padding:10px; font-family:monospace; font-size:11px; margin-bottom:12px; resize:none;">javascript:(function(){var s=document.createElement('script');s.src='https://amfmu49-spec.github.io/lyrimo/bookmarklet_mureka.js?t='+Date.now();document.body.appendChild(s);})();</textarea>
+    <button type="button" onclick="navigator.clipboard.writeText(document.getElementById('bmCodeMureka').value); this.textContent='✅ Mureka用をコピーしました！'; setTimeout(() => this.textContent='📋 Mureka用コードをコピー', 2000)" style="width:100%; background:#0284c7; color:#fff; border:none; border-radius:8px; padding:10px; font-size:14px; font-weight:bold; cursor:pointer;">📋 Mureka用コードをコピー</button>
+  </div>
+
+  <script>
+    function switchBmTab(tab) {
+      const isSuno = tab === 'suno';
+      document.getElementById('bmPaneSuno').style.display = isSuno ? 'block' : 'none';
+      document.getElementById('bmPaneMureka').style.display = isSuno ? 'none' : 'block';
+      document.getElementById('tabBmSuno').style.background = isSuno ? '#6366f1' : '#334155';
+      document.getElementById('tabBmSuno').style.color = isSuno ? '#fff' : '#94a3b8';
+      document.getElementById('tabBmMureka').style.background = isSuno ? '#334155' : '#0284c7';
+      document.getElementById('tabBmMureka').style.color = isSuno ? '#94a3b8' : '#fff';
+    }
+  </script>
 </dialog>
 
 <script>
